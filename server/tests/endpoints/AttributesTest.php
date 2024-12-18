@@ -1,284 +1,244 @@
 <?php
-namespace Robert2\Tests;
+declare(strict_types=1);
+
+namespace Loxya\Tests;
+
+use Fig\Http\Message\StatusCodeInterface as StatusCode;
+use Illuminate\Support\Collection;
+use Loxya\Models\Attribute;
+use Loxya\Models\Enums\AttributeEntity;
+use Loxya\Models\Enums\AttributeType;
+use Loxya\Support\Arr;
 
 final class AttributesTest extends ApiTestCase
 {
-    public function testGetAll()
+    public static function data(?int $id = null, string $format = Attribute::SERIALIZE_DEFAULT)
     {
-        // - Récupère toutes les caractéristiques spéciales avec leurs catégories
-        $this->client->get('/api/attributes');
-        $this->assertStatusCode(SUCCESS_OK);
-        $response = $this->_getResponseAsArray();
-        $expected = [
+        $attributes = new Collection([
             [
-                'id' => 4,
-                'name' => "Conforme",
-                'type' => "boolean",
-                'unit' => null,
-                'max_length' => null,
-                'categories' => [],
-                'created_at' => null,
-                'updated_at' => null,
-                'deleted_at' => null,
+                'id' => 1,
+                'name' => "Poids",
+                'entities' => [AttributeEntity::MATERIAL->value],
+                'type' => AttributeType::FLOAT->value,
+                'unit' => "kg",
+                'is_totalisable' => true,
+                'categories' => [
+                    CategoriesTest::data(2),
+                    CategoriesTest::data(1),
+                ],
             ],
             [
                 'id' => 2,
                 'name' => "Couleur",
-                'type' => "string",
-                'unit' => null,
-                'max_length' => null,
-                'categories' => [],
-                'created_at' => null,
-                'updated_at' => null,
-                'deleted_at' => null,
-            ],
-            [
-                'id' => 5,
-                'name' => "Date d'achat",
-                'type' => "date",
-                'unit' => null,
-                'max_length' => null,
-                'categories' => [],
-                'created_at' => null,
-                'updated_at' => null,
-                'deleted_at' => null,
-            ],
-            [
-                'id' => 1,
-                'name' => "Poids",
-                'type' => "float",
-                'unit' => "kg",
-                'max_length' => null,
-                'categories' => [
-                    [
-                        'id' => 2,
-                        'name' => "light",
-                        'sub_categories' => [
-                            ['id' => 4, 'name' => 'dimmers', 'category_id' => 2],
-                            ['id' => 3, 'name' => 'projectors', 'category_id' => 2],
-                        ],
-                        'pivot' => ['attribute_id' => 1, 'category_id' => 2]
-                    ],
-                    [
-                        'id' => 1,
-                        'name' => "sound",
-                        'sub_categories' => [
-                            ['id' => 1, 'name' => 'mixers', 'category_id' => 1],
-                            ['id' => 2, 'name' => 'processors', 'category_id' => 1],
-                        ],
-                        'pivot' => ['attribute_id' => 1, 'category_id' => 1]
-                    ],
+                'entities' => [
+                    AttributeEntity::MATERIAL->value,
                 ],
-                'created_at' => null,
-                'updated_at' => null,
-                'deleted_at' => null,
+                'type' => AttributeType::STRING->value,
+                'max_length' => null,
+                'categories' => [],
             ],
             [
                 'id' => 3,
                 'name' => "Puissance",
-                'type' => "integer",
+                'entities' => [AttributeEntity::MATERIAL->value],
+                'type' => AttributeType::INTEGER->value,
                 'unit' => "W",
+                'is_totalisable' => true,
+                'categories' => [
+                    CategoriesTest::data(2),
+                    CategoriesTest::data(1),
+                ],
+            ],
+            [
+                'id' => 4,
+                'name' => "Conforme",
+                'entities' => [AttributeEntity::MATERIAL->value],
+                'type' => AttributeType::BOOLEAN->value,
+                'categories' => [],
+            ],
+            [
+                'id' => 5,
+                'name' => "Date d'achat",
+                'entities' => [
+                    AttributeEntity::MATERIAL->value,
+                ],
+                'type' => AttributeType::DATE->value,
+                'categories' => [],
+            ],
+            [
+                'id' => 6,
+                'name' => "Nettoyé le",
+                'entities' => [AttributeEntity::MATERIAL->value],
+                'type' => AttributeType::DATE->value,
+                'categories' => [
+                    CategoriesTest::data(4),
+                    CategoriesTest::data(3),
+                ],
+            ],
+            [
+                'id' => 7,
+                'name' => "Immatriculation",
+                'entities' => [AttributeEntity::MATERIAL->value],
+                'type' => AttributeType::STRING->value,
                 'max_length' => null,
                 'categories' => [
-                    [
-                        'id' => 1,
-                        'name' => "sound",
-                        'sub_categories' => [
-                            ['id' => 1, 'name' => 'mixers', 'category_id' => 1],
-                            ['id' => 2, 'name' => 'processors', 'category_id' => 1],
-                        ],
-                        'pivot' => ['attribute_id' => 3, 'category_id' => 1]
-                    ],
+                    CategoriesTest::data(3),
                 ],
-                'created_at' => null,
-                'updated_at' => null,
-                'deleted_at' => null,
             ],
-        ];
-        $this->assertEquals($expected, $response);
+            [
+                'id' => 8,
+                'name' => "Prix d'achat",
+                'entities' => [
+                    AttributeEntity::MATERIAL->value,
+                ],
+                'type' => AttributeType::FLOAT->value,
+                'unit' => "€",
+                'is_totalisable' => true,
+                'categories' => [],
+            ],
+        ]);
+
+        $attributes = match ($format) {
+            Attribute::SERIALIZE_DEFAULT => $attributes->map(static fn ($attribute) => (
+                Arr::except($attribute, ['categories'])
+            )),
+            Attribute::SERIALIZE_DETAILS => $attributes,
+            default => throw new \InvalidArgumentException(sprintf("Unknown format \"%s\"", $format)),
+        };
+
+        return static::dataFactory($id, $attributes->all());
     }
 
-    public function testGetAllForCategory()
+    public function testGetAll(): void
     {
+        // - Récupère toutes les caractéristiques spéciales avec leurs catégories.
+        $this->client->get('/api/attributes');
+        $this->assertStatusCode(StatusCode::STATUS_OK);
+        $this->assertResponseData([
+            self::data(4, Attribute::SERIALIZE_DETAILS),
+            self::data(2, Attribute::SERIALIZE_DETAILS),
+            self::data(5, Attribute::SERIALIZE_DETAILS),
+            self::data(7, Attribute::SERIALIZE_DETAILS),
+            self::data(6, Attribute::SERIALIZE_DETAILS),
+            self::data(1, Attribute::SERIALIZE_DETAILS),
+            self::data(8, Attribute::SERIALIZE_DETAILS),
+            self::data(3, Attribute::SERIALIZE_DETAILS),
+        ]);
+
         // - Récupère les caractéristiques spéciales qui n'ont
-        // - pas de catégorie, + celles de la catégorie #3
+        // - pas de catégorie, + celles de la catégorie #3.
         $this->client->get('/api/attributes?category=3');
-        $this->assertStatusCode(SUCCESS_OK);
-        $response = $this->_getResponseAsArray();
-        $expected = [
-            [
-                'id' => 4,
-                'name' => "Conforme",
-                'type' => "boolean",
-                'unit' => null,
-                'max_length' => null,
-                'categories' => [],
-                'created_at' => null,
-                'updated_at' => null,
-                'deleted_at' => null,
-            ],
-            [
-                'id' => 2,
-                'name' => "Couleur",
-                'type' => "string",
-                'unit' => null,
-                'max_length' => null,
-                'categories' => [],
-                'created_at' => null,
-                'updated_at' => null,
-                'deleted_at' => null,
-            ],
-            [
-                'id' => 5,
-                'name' => "Date d'achat",
-                'type' => "date",
-                'unit' => null,
-                'max_length' => null,
-                'categories' => [],
-                'created_at' => null,
-                'updated_at' => null,
-                'deleted_at' => null,
-            ],
-        ];
-        $this->assertEquals($expected, $response);
+        $this->assertStatusCode(StatusCode::STATUS_OK);
+        $this->assertResponseData([
+            self::data(4, Attribute::SERIALIZE_DETAILS),
+            self::data(2, Attribute::SERIALIZE_DETAILS),
+            self::data(5, Attribute::SERIALIZE_DETAILS),
+            self::data(7, Attribute::SERIALIZE_DETAILS),
+            self::data(6, Attribute::SERIALIZE_DETAILS),
+            self::data(8, Attribute::SERIALIZE_DETAILS),
+        ]);
 
         // - Récupère les caractéristiques spéciales qui n'ont
-        // - pas de catégorie, + celles de la catégorie #2
+        // - pas de catégorie, + celles de la catégorie #2.
         $this->client->get('/api/attributes?category=2');
-        $this->assertStatusCode(SUCCESS_OK);
-        $response = $this->_getResponseAsArray();
-        $expected = [
-            [
-                'id' => 4,
-                'name' => "Conforme",
-                'type' => "boolean",
-                'unit' => null,
-                'max_length' => null,
-                'categories' => [],
-                'created_at' => null,
-                'updated_at' => null,
-                'deleted_at' => null,
-            ],
-            [
-                'id' => 2,
-                'name' => "Couleur",
-                'type' => "string",
-                'unit' => null,
-                'max_length' => null,
-                'categories' => [],
-                'created_at' => null,
-                'updated_at' => null,
-                'deleted_at' => null,
-            ],
-            [
-                'id' => 5,
-                'name' => "Date d'achat",
-                'type' => "date",
-                'unit' => null,
-                'max_length' => null,
-                'categories' => [],
-                'created_at' => null,
-                'updated_at' => null,
-                'deleted_at' => null,
-            ],
-            [
-                'id' => 1,
-                'name' => "Poids",
-                'type' => "float",
-                'unit' => "kg",
-                'max_length' => null,
-                'categories' => [
-                    [
-                        'id' => 2,
-                        'name' => "light",
-                        'sub_categories' => [
-                            ['id' => 4, 'name' => 'dimmers', 'category_id' => 2],
-                            ['id' => 3, 'name' => 'projectors', 'category_id' => 2],
-                        ],
-                        'pivot' => ['attribute_id' => 1, 'category_id' => 2]
-                    ],
-                    [
-                        'id' => 1,
-                        'name' => "sound",
-                        'sub_categories' => [
-                            ['id' => 1, 'name' => 'mixers', 'category_id' => 1],
-                            ['id' => 2, 'name' => 'processors', 'category_id' => 1],
-                        ],
-                        'pivot' => ['attribute_id' => 1, 'category_id' => 1]
-                    ],
-                ],
-                'created_at' => null,
-                'updated_at' => null,
-                'deleted_at' => null,
-            ],
-        ];
-        $this->assertEquals($expected, $response);
+        $this->assertStatusCode(StatusCode::STATUS_OK);
+        $this->assertResponseData([
+            self::data(4, Attribute::SERIALIZE_DETAILS),
+            self::data(2, Attribute::SERIALIZE_DETAILS),
+            self::data(5, Attribute::SERIALIZE_DETAILS),
+            self::data(1, Attribute::SERIALIZE_DETAILS),
+            self::data(8, Attribute::SERIALIZE_DETAILS),
+            self::data(3, Attribute::SERIALIZE_DETAILS),
+        ]);
+
+        // - Récupère les caractéristiques spéciales qui n'ont pas de catégorie.
+        $this->client->get('/api/attributes?category=none');
+        $this->assertStatusCode(StatusCode::STATUS_OK);
+        $this->assertResponseData([
+            self::data(4, Attribute::SERIALIZE_DETAILS),
+            self::data(2, Attribute::SERIALIZE_DETAILS),
+            self::data(5, Attribute::SERIALIZE_DETAILS),
+            self::data(8, Attribute::SERIALIZE_DETAILS),
+        ]);
+
+        // - Récupère les caractéristiques spéciales liées au matériel uniquement.
+        $this->client->get('/api/attributes?entity=material');
+        $this->assertStatusCode(StatusCode::STATUS_OK);
+        $this->assertResponseData([
+            self::data(4, Attribute::SERIALIZE_DETAILS),
+            self::data(2, Attribute::SERIALIZE_DETAILS),
+            self::data(5, Attribute::SERIALIZE_DETAILS),
+            self::data(7, Attribute::SERIALIZE_DETAILS),
+            self::data(6, Attribute::SERIALIZE_DETAILS),
+            self::data(1, Attribute::SERIALIZE_DETAILS),
+            self::data(8, Attribute::SERIALIZE_DETAILS),
+            self::data(3, Attribute::SERIALIZE_DETAILS),
+        ]);
     }
 
-    public function testCreateAttribute()
+    public function testGetOne(): void
     {
-        // Crée une nouvelle caractéristique spéciale
-        $data = [
+        $this->client->get('/api/attributes/1');
+        $this->assertStatusCode(StatusCode::STATUS_OK);
+        $this->assertResponseData(self::data(1, Attribute::SERIALIZE_DETAILS));
+    }
+
+    public function testCreate(): void
+    {
+        $this->client->post('/api/attributes', [
             'name' => 'Speed',
-            'type' => 'float',
+            'entities' => [
+                AttributeEntity::MATERIAL->value,
+            ],
+            'type' => AttributeType::FLOAT->value,
             'unit' => 'km/h',
-            'max_length' => 4,
             'categories' => [2, 3],
-        ];
-        $this->client->post('/api/attributes', $data);
-        $this->assertStatusCode(SUCCESS_CREATED);
-        $expected = [
-            'id' => 6,
+            'is_totalisable' => false,
+        ]);
+        $this->assertStatusCode(StatusCode::STATUS_CREATED);
+        $this->assertResponseData([
+            'id' => 9,
             'name' => 'Speed',
-            'type' => 'float',
-            'unit' => 'km/h',
-            'max_length' => 4,
-            'categories' => [
-                [
-                    'id' => 2,
-                    'name' => "light",
-                    'sub_categories' => [
-                        ['id' => 4, 'name' => 'dimmers', 'category_id' => 2],
-                        ['id' => 3, 'name' => 'projectors', 'category_id' => 2],
-                    ],
-                    'pivot' => ['attribute_id' => 6, 'category_id' => 2]
-                ],
-                [
-                    'id' => 3,
-                    'name' => "transport",
-                    'sub_categories' => [],
-                    'pivot' => ['attribute_id' => 6, 'category_id' => 3]
-                ],
+            'entities' => [
+                AttributeEntity::MATERIAL->value,
             ],
-            'created_at' => 'fakedTestContent',
-            'updated_at' => 'fakedTestContent',
-            'deleted_at' => null,
-        ];
-        $this->assertResponseData($expected, ['created_at', 'updated_at']);
+            'type' => AttributeType::FLOAT->value,
+            'unit' => 'km/h',
+            'categories' => [
+                CategoriesTest::data(2),
+                CategoriesTest::data(3),
+            ],
+            'is_totalisable' => false,
+        ]);
     }
 
-    public function testUpdateAttribute()
+    public function testUpdate(): void
     {
-        // - Modifie une caractéristique spéciale
-        $data = [
+        $this->client->put('/api/attributes/1', [
             'name' => 'Masse',
-            'type' => 'integer',
+            'entities' => [
+                AttributeEntity::MATERIAL->value,
+            ],
+            'type' => AttributeType::INTEGER->value,
             'unit' => 'g',
-            'max_length' => 10,
-        ];
-        $this->client->put('/api/attributes/1', $data);
-        $this->assertStatusCode(SUCCESS_OK);
-        // - Uniquement le nom a été modifié
-        $expected = [
-            'id' => 1,
-            'name' => 'Masse',
-            'type' => 'float',
-            'unit' => 'kg',
-            'max_length' => null,
-            'created_at' => null,
-            'updated_at' => 'fakedTestContent',
-            'deleted_at' => null,
-        ];
-        $this->assertResponseData($expected, ['updated_at']);
+            'categories' => [3, 4],
+            'is_totalisable' => false,
+        ]);
+        $this->assertStatusCode(StatusCode::STATUS_OK);
+        $this->assertResponseData(array_replace(
+            self::data(1, Attribute::SERIALIZE_DETAILS),
+            [
+                'name' => 'Masse',
+                'entities' => [
+                    AttributeEntity::MATERIAL->value,
+                ],
+                'unit' => 'g',
+                'is_totalisable' => false,
+                'categories' => [
+                    CategoriesTest::data(4),
+                    CategoriesTest::data(3),
+                ],
+            ],
+        ));
     }
 }

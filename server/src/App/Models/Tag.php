@@ -1,151 +1,128 @@
 <?php
 declare(strict_types=1);
 
-namespace Robert2\API\Models;
+namespace Loxya\Models;
 
-use Illuminate\Database\Eloquent\SoftDeletes;
+use Adbar\Dot as DotArray;
+use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
-use Illuminate\Database\QueryException;
-use Robert2\API\Validation\Validator as V;
-use Robert2\API\Errors\ValidationException;
+use Illuminate\Database\Eloquent\Relations\MorphToMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use Loxya\Contracts\Serializable;
+use Loxya\Models\Traits\Serializer;
+use Loxya\Support\Assert;
+use Respect\Validation\Validator as V;
 
-class Tag extends BaseModel
+/**
+ * Tag.
+ *
+ * @property-read ?int $id
+ * @property string $name
+ * @property-read CarbonImmutable $created_at
+ * @property-read CarbonImmutable|null $updated_at
+ * @property-read CarbonImmutable|null $deleted_at
+ *
+ * @property-read Collection<array-key, Material> $materials
+ *
+ * @method static Builder|static search(string $term)
+ */
+final class Tag extends BaseModel implements Serializable
 {
     use SoftDeletes;
-
-    protected $searchField = 'name';
+    use Serializer;
 
     public function __construct(array $attributes = [])
     {
         parent::__construct($attributes);
 
         $this->validation = [
-            'name' => V::notEmpty()->length(1, 48)
+            'name' => V::custom([$this, 'checkName']),
         ];
     }
 
-    // ——————————————————————————————————————————————————————
-    // —
-    // —    Relations
-    // —
-    // ——————————————————————————————————————————————————————
+    // ------------------------------------------------------
+    // -
+    // -    Validation
+    // -
+    // ------------------------------------------------------
 
-    public function Persons()
+    public function checkName($value)
     {
-        return $this->morphedByMany(
-            'Robert2\API\Models\Person',
-            'taggable'
-        );
+        V::notEmpty()
+            ->length(1, 48)
+            ->check($value);
+
+        $alreadyExists = static::query()
+            ->where('name', $value)
+            ->when($this->exists, fn (Builder $subQuery) => (
+                $subQuery->where('id', '!=', $this->id)
+            ))
+            ->withTrashed()
+            ->exists();
+
+        return !$alreadyExists ?: 'tag-name-already-in-use';
     }
 
-    public function Companies()
+    // ------------------------------------------------------
+    // -
+    // -    Relations
+    // -
+    // ------------------------------------------------------
+
+    public function materials(): MorphToMany
     {
-        return $this->morphedByMany(
-            'Robert2\API\Models\Company',
-            'taggable'
-        );
+        return $this->morphedByMany(Material::class, 'taggable')
+            ->orderBy('id');
     }
 
-    public function Materials()
-    {
-        return $this->morphedByMany(
-            'Robert2\API\Models\Material',
-            'taggable'
-        );
-    }
+    // ------------------------------------------------------
+    // -
+    // -    Mutators
+    // -
+    // ------------------------------------------------------
 
-    // ——————————————————————————————————————————————————————
-    // —
-    // —    Mutators
-    // —
-    // ——————————————————————————————————————————————————————
+    protected $casts = [
+        'name' => 'string',
+        'created_at' => 'immutable_datetime',
+        'updated_at' => 'immutable_datetime',
+        'deleted_at' => 'immutable_datetime',
+    ];
 
-    protected $casts = ['name' => 'string'];
-
-    public function getPersonsAttribute()
-    {
-        $persons = $this->Persons()->get();
-        return $persons ? $persons->toArray() : null;
-    }
-
-    public function getMaterialsAttribute()
-    {
-        $materials = $this->Materials()->get();
-        return $materials ? $materials->toArray() : null;
-    }
-
-    // ——————————————————————————————————————————————————————
-    // —
-    // —    Getters
-    // —
-    // ——————————————————————————————————————————————————————
-
-    public function getIdsByNames(array $names): array
-    {
-        $tags = static::whereIn('name', $names)->get();
-        $ids  = [];
-        foreach ($tags as $tag) {
-            $ids[] = $tag->id;
-        }
-        return $ids;
-    }
-
-    // ——————————————————————————————————————————————————————
-    // —
-    // —    Setters
-    // —
-    // ——————————————————————————————————————————————————————
+    // ------------------------------------------------------
+    // -
+    // -    Setters
+    // -
+    // ------------------------------------------------------
 
     protected $fillable = ['name'];
 
-    public function bulkAdd(array $tagNames = []): array
+    // ------------------------------------------------------
+    // -
+    // -    Query Scopes
+    // -
+    // ------------------------------------------------------
+
+    protected $orderable = ['name'];
+
+    public function scopeSearch(Builder $query, string $term): Builder
     {
-        $tags = array_map(
-            function ($tagName) {
-                $existingTag = static::where('name', $tagName)->first();
-                if ($existingTag) {
-                    return $existingTag;
-                }
+        Assert::minLength($term, 2, "The term must contain more than two characters.");
 
-                $tag = new static(['name' => trim($tagName)]);
-                return tap($tag, function ($instance) {
-                    $instance->validate();
-                });
-            },
-            $tagNames
-        );
-
-        $this->getConnection()->transaction(function () use ($tags) {
-            try {
-                foreach ($tags as $tag) {
-                    if (!$tag->exists || $tag->isDirty()) {
-                        $tag->save();
-                    }
-                }
-            } catch (QueryException $e) {
-                throw (new ValidationException)
-                    ->setPDOValidationException($e);
-            }
-        });
-
-        return $tags;
+        $term = sprintf('%%%s%%', addcslashes($term, '%_'));
+        return $query->where('name', 'LIKE', $term);
     }
 
-    // ——————————————————————————————————————————————————————
-    // —
-    // —    Utility Methods
-    // —
-    // ——————————————————————————————————————————————————————
+    // ------------------------------------------------------
+    // -
+    // -    Serialization
+    // -
+    // ------------------------------------------------------
 
-    public static function format(Collection $Tags): array
+    public function serialize(): array
     {
-        $tags = [];
-        foreach ($Tags as $Tag) {
-            $tags[] = [
-                'id'   => $Tag->id,
-                'name' => $Tag->name,
-            ];
-        }
-        return $tags;
+        return (new DotArray($this->attributesForSerialization()))
+            ->delete(['created_at', 'updated_at', 'deleted_at'])
+            ->all();
     }
 }

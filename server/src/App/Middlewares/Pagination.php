@@ -1,21 +1,25 @@
 <?php
 declare(strict_types=1);
 
-namespace Robert2\API\Middlewares;
+namespace Loxya\Middlewares;
 
 use Illuminate\Pagination\Paginator;
+use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\ServerRequestInterface;
+use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface as RequestHandler;
-use Slim\Http\ServerRequest as Request;
 
-class Pagination
+final class Pagination implements MiddlewareInterface
 {
-    public function __invoke(Request $request, RequestHandler $handler)
+    public function process(ServerRequestInterface $request, RequestHandler $handler): ResponseInterface
     {
-        Paginator::currentPageResolver(
-            function () use ($request) {
-                return $request->getParam('page');
-            }
-        );
+        if (!($request instanceof \Loxya\Http\Request)) {
+            throw new \InvalidArgumentException('Not a Loxya request.');
+        }
+
+        Paginator::currentPageResolver(static fn () => (
+            $request->getQueryParam('page')
+        ));
 
         return $handler->handle($request);
     }

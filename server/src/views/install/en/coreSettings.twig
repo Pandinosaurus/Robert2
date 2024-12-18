@@ -1,39 +1,23 @@
 <div class="page__content">
-    <h2>{{stepNumber}} - Robert2 core settings</h2>
+    <h2>{{ stepNumber }} - Loxya core settings</h2>
     <p>
         In this step, the configuration has been <strong>automatically detected</strong>,
         but you can check and modify all settings, if you know what you're doing!
     </p>
     <form method="POST" class="form">
         <section class="form__field">
-            <h3 class="form__field-title">API URL</h3>
+            <h3 class="form__field-title">Application URL</h3>
             <p class="form__field-description">
                 This is the base URL of the application, that you'll use everyday.
             </p>
-            <input
-                type="text"
-                name="apiUrl"
-                size="10"
-                value="{{config['apiUrl']}}"
-            />
+            <input type="text" name="baseUrl" size="10" value="{{ config['baseUrl'] }}" />
         </section>
         <p>
-            <a onclick="showHiddenFieldset()" id="showFieldset" class="form__fieldset-toggle">
+            <a onclick="showHiddenFieldset()" id="show-fieldset" class="form__fieldset-toggle">
                 Show advanced settings...
             </a>
         </p>
         <fieldset class="form__fieldset form__fieldset--hidden">
-            <section class="form__field form__field--hidden">
-                <h3 class="form__field-title">Application name</h3>
-                <p class="form__field-description">
-                    The name of the application. Actually, known as... well, "Robert2".
-                </p>
-                <input
-                    type="text"
-                    name="basename"
-                    value="{{config['basename']}}"
-                />
-            </section>
             <section class="form__field">
                 <h3 class="form__field-title">
                     Enable CORS (Cross Origin Resource Sharing)
@@ -113,36 +97,10 @@
             </section>
             <section class="form__field">
                 <h3 class="form__field-title">
-                    Use HTTPS
-                </h3>
-                <p class="form__field-description">
-                    Wether to use HTTPS protocol or not.
-                </p>
-                <div class="form__radio">
-                    <input
-                        type="radio"
-                        id="useHttpsYes"
-                        name="useHTTPS"
-                        value="1"
-                        {% if config['useHTTPS'] %} checked="checked" {% endif %}
-                    />
-                    <label for="useHttpsYes">Yes</label>
-                    <input
-                        type="radio"
-                        id="useHttpsNo"
-                        name="useHTTPS"
-                        value="0"
-                        {% if not config['useHTTPS'] %} checked {% endif %}
-                    />
-                    <label for="useHttpsNo">No</label>
-                </div>
-            </section>
-            <section class="form__field">
-                <h3 class="form__field-title">
                     Sessions duration
                 </h3>
                 <p class="form__field-description">
-                    Expiration time of a session: number of hours a session can last on Robert, before
+                    Expiration time of a session: number of hours a session can last on Loxya, before
                     the user must re-log into the application.
                 </p>
                 <div class="form__input">
@@ -150,7 +108,7 @@
                         type="number"
                         step="1"
                         name="sessionExpireHours"
-                        value="{{config['sessionExpireHours']}}"
+                        value="{{ config['sessionExpireHours'] }}"
                     />
                     <label for="sessionExpireHours">hours</label>
                 </div>
@@ -167,7 +125,7 @@
                 <input
                     type="text"
                     name="JWTSecret"
-                    value="{{stepData['JWTSecret']}}"
+                    value="{{ stepData['JWTSecret'] }}"
                 />
             </section>
             <section class="form__field">
@@ -181,7 +139,7 @@
                 <input
                     type="text"
                     name="httpAuthHeader"
-                    value="{{config['httpAuthHeader']}}"
+                    value="{{ config['httpAuthHeader'] }}"
                 />
             </section>
             <p>
@@ -196,4 +154,4 @@
     </form>
 </div>
 
-<script src="js/install/fieldsetToggle.js"></script>
+<script src="{{ asset('/installer/js/fieldsetToggle.js') }}"></script>

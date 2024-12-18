@@ -1,35 +1,68 @@
 <?php
 declare(strict_types=1);
 
-namespace Robert2\API;
+namespace Loxya;
 
+use DI\Container;
 use DI\ContainerBuilder;
-use Psr\Container\ContainerInterface;
-use Robert2\API\Config\Config;
+use Illuminate\Container\Container as IlluminateContainer;
+use Illuminate\Database\Capsule\Manager as Database;
+use Illuminate\Database\DatabaseTransactionsManager;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\Relation;
+use Illuminate\Events\Dispatcher as EventDispatcher;
+use Loxya\Config\Config;
+use Loxya\Support\Paginator\CursorPaginator;
+use Loxya\Support\Paginator\LengthAwarePaginator;
+use Loxya\Support\Paginator\Paginator;
+use Respect\Validation\Factory as ValidatorFactory;
 
-class Kernel
+final class Kernel
 {
-    protected $container;
+    private static $instance;
 
-    protected $booted = false;
+    protected Container $container;
 
-    public function boot(): self
+    public static function boot(): static
     {
-        if ($this->booted) {
-            return $this;
+        if (!is_null(static::$instance)) {
+            return static::$instance;
         }
-
-        $this->initializeContainer();
-
-        $this->booted = true;
-
-        return $this;
+        return static::$instance = new static();
     }
 
-    public function getContainer(): ContainerInterface
+    public static function get(): static
+    {
+        if (is_null(static::$instance)) {
+            throw new \LogicException("Attempt to retrieve the kernel before it boots.");
+        }
+        return static::$instance;
+    }
+
+    public static function reset(): void
+    {
+        IlluminateContainer::getInstance()->flush();
+
+        static::$instance = new static();
+    }
+
+    // ------------------------------------------------------
+    // -
+    // -    Instance methods
+    // -
+    // ------------------------------------------------------
+
+    private function __construct()
+    {
+        $this->initializeContainer();
+        $this->initializeValidator();
+        $this->initializeDatabase();
+    }
+
+    public function getContainer(): Container
     {
         if (!$this->container) {
-            throw new \LogicException("Impossible de récupérer le conteneur à partir d'un kernel non booté.");
+            throw new \LogicException("Unable to retrieve the container from an uninitialized kernel.");
         }
         return $this->container;
     }
@@ -40,20 +73,78 @@ class Kernel
     // -
     // ------------------------------------------------------
 
-    protected function initializeContainer(): ContainerInterface
+    protected function initializeContainer(): void
     {
-        $builder = new ContainerBuilder();
+        $this->container = (new ContainerBuilder())
+            ->addDefinitions(CONFIG_FOLDER . DS . 'definitions.php')
+            ->build();
+    }
 
-        $builder->addDefinitions(CONFIG_FOLDER . DS . 'definitions.php');
+    protected function initializeValidator(): void
+    {
+        ValidatorFactory::setDefaultInstance(
+            (new ValidatorFactory())
+                ->withTranslator(fn ($value) => (
+                    $this->container->get('i18n')->translate($value)
+                )),
+        );
+    }
 
-        $container = $builder->build();
+    protected function initializeDatabase(): void
+    {
+        // - Illuminate container.
+        $illuminateContainer = IlluminateContainer::getInstance();
+        $illuminateContainer->singleton('db.transactions', static fn () => (
+            new DatabaseTransactionsManager()
+        ));
+        $illuminateContainer->bind(
+            \Illuminate\Pagination\LengthAwarePaginator::class,
+            LengthAwarePaginator::class,
+        );
+        $illuminateContainer->bind(
+            \Illuminate\Pagination\CursorPaginator::class,
+            CursorPaginator::class,
+        );
+        $illuminateContainer->bind(
+            \Illuminate\Pagination\Paginator::class,
+            Paginator::class,
+        );
 
-        //
-        // - Settings
-        //
+        // - Database.
+        $database = new Database($illuminateContainer);
+        $database->addConnection(Config::getDbConfig());
+        $database->setEventDispatcher(
+            (new EventDispatcher($illuminateContainer))
+                ->setTransactionManagerResolver(static fn () => (
+                    $illuminateContainer->bound('db.transactions')
+                        ? $illuminateContainer->make('db.transactions')
+                        : null
+                )),
+        );
+        $database->bootEloquent();
 
-        $container->set('settings', Config::getSettings());
+        $this->container->set('database', $database);
 
-        return $this->container = $container;
+        // - Configuration du fonctionnement des modèles.
+        // TODO: Model::preventSilentlyDiscardingAttributes();
+        Model::preventAccessingMissingAttributes();
+
+        // - Morphs
+        Relation::enforceMorphMap([
+            Models\Event::TYPE => Models\Event::class,
+            Models\Material::TYPE => Models\Material::class,
+            Models\Technician::TYPE => Models\Technician::class,
+        ]);
+
+        // - Observers
+        Models\Event::observe(Observers\EventObserver::class);
+        Models\EventMaterial::observe(Observers\EventMaterialObserver::class);
+        Models\Material::observe(Observers\MaterialObserver::class);
+        Models\Attribute::observe(Observers\AttributeObserver::class);
+        Models\AttributeCategory::observe(Observers\AttributeCategoryObserver::class);
+        Models\Beneficiary::observe(Observers\BeneficiaryObserver::class);
+        Models\Park::observe(Observers\ParkObserver::class);
+        Models\Technician::observe(Observers\TechnicianObserver::class);
+        Models\User::observe(Observers\UserObserver::class);
     }
 }

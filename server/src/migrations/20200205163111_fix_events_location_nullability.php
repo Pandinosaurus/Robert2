@@ -1,35 +1,39 @@
 <?php
+declare(strict_types=1);
+
+use Loxya\Config\Config;
 use Phinx\Migration\AbstractMigration;
 
-use Robert2\API\Config as Config;
-
-class FixEventsLocationNullability extends AbstractMigration
+final class FixEventsLocationNullability extends AbstractMigration
 {
-    public function up()
+    public function up(): void
     {
         $table = $this->table('events');
         $table
             ->changeColumn('location', 'string', ['null' => true, 'length' => 64])
             ->update();
 
-        $prefix = Config\Config::getSettings('db')['prefix'];
+        $prefix = Config::get('db.prefix');
         $this->execute(sprintf(
             "UPDATE `%sevents` SET `location` = NULL WHERE `location` = ''",
-            $prefix
+            $prefix,
         ));
     }
 
-    public function down()
+    public function down(): void
     {
-        $prefix = Config\Config::getSettings('db')['prefix'];
+        $prefix = Config::get('db.prefix');
         $this->execute(sprintf(
             "UPDATE `%sevents` SET `location` = '' WHERE `location` IS NULL",
-            $prefix
+            $prefix,
         ));
 
         $table = $this->table('events');
         $table
-            ->changeColumn('location', 'string', ['length' => 64])
+            ->changeColumn('location', 'string', [
+                'length' => 64,
+                'null' => false,
+            ])
             ->update();
     }
 }

@@ -1,16 +1,17 @@
 <?php
+declare(strict_types=1);
+
+use Loxya\Config\Config;
 use Phinx\Migration\AbstractMigration;
 
-use Robert2\API\Config as Config;
-
-class CreateGroupsOfUsers extends AbstractMigration
+final class CreateGroupsOfUsers extends AbstractMigration
 {
-    public function up()
+    public function up(): void
     {
         $groups = $this->table('groups', ['id' => false, 'primary_key' => 'id']);
         $groups
-            ->addColumn('id', 'string', ['length' => 16])
-            ->addColumn('name', 'string', ['length' => 32])
+            ->addColumn('id', 'string', ['length' => 16, 'null' => false])
+            ->addColumn('name', 'string', ['length' => 32, 'null' => false])
             ->create();
 
         $dataGroups = [
@@ -22,30 +23,32 @@ class CreateGroupsOfUsers extends AbstractMigration
 
         $users = $this->table('users');
         $users->renameColumn('group', 'group_id')->save();
-        $users->changeColumn('group_id', 'string', ['length' => 16])->save();
+        $users
+            ->changeColumn('group_id', 'string', ['length' => 16, 'null' => false])
+            ->save();
 
-        $prefix = Config\Config::getSettings('db')['prefix'];
+        $prefix = Config::get('db.prefix');
 
         $this->execute(sprintf(
             "UPDATE `%susers` SET `group_id` = 'admin' WHERE `group_id` = '1'",
-            $prefix
+            $prefix,
         ));
         $this->execute(sprintf(
             "UPDATE `%susers` SET `group_id` = 'member' WHERE `group_id` = '2'",
-            $prefix
+            $prefix,
         ));
 
         $users
             ->addIndex(['group_id'])
             ->addForeignKey('group_id', 'groups', 'id', [
-                'delete'     => 'RESTRICT',
-                'update'     => 'NO_ACTION',
-                'constraint' => 'fk_users_group'
+                'delete' => 'RESTRICT',
+                'update' => 'NO_ACTION',
+                'constraint' => 'fk_users_group',
             ])
             ->save();
     }
 
-    public function down()
+    public function down(): void
     {
         $users = $this->table('users');
         $users
@@ -53,18 +56,23 @@ class CreateGroupsOfUsers extends AbstractMigration
             ->removeIndex(['group_id'])
             ->save();
 
-        $prefix = Config\Config::getSettings('db')['prefix'];
+        $prefix = Config::get('db.prefix');
 
         $this->execute(sprintf(
             "UPDATE `%susers` SET `group_id` = '1' WHERE `group_id` = 'admin'",
-            $prefix
+            $prefix,
         ));
         $this->execute(sprintf(
             "UPDATE `%susers` SET `group_id` = '2' WHERE `group_id` = 'member'",
-            $prefix
+            $prefix,
         ));
 
-        $users->changeColumn('group_id', 'integer')->save();
+        $users
+            ->changeColumn('group_id', 'integer', [
+                'signed' => true,
+                'null' => false,
+            ])
+            ->save();
         $users->renameColumn('group_id', 'group')->save();
 
         $this->table('groups')->drop()->save();

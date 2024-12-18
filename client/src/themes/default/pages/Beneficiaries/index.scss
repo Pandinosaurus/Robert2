@@ -1,0 +1,72 @@
+@use '~@/themes/default/style/globals';
+@use 'sass:color';
+
+.Beneficiaries {
+    $block: &;
+
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+
+    &__table {
+        flex: 1;
+    }
+
+    &:not(&--trashed) {
+        #{$block}__row {
+            cursor: pointer;
+
+            &:hover > #{$block}__cell {
+                background-color: color.adjust(globals.$bg-color-table-td, $lightness: 5%);
+            }
+        }
+    }
+
+    &__cell {
+        &__empty {
+            color: globals.$text-light-color;
+            font-style: italic;
+        }
+
+        &--reference,
+        &--email,
+        &--company,
+        &--address,
+        &--note {
+            display: none;
+        }
+
+        &--address {
+            white-space: pre-line;
+        }
+
+        &--note {
+            max-width: 200px;
+            white-space: pre-line;
+        }
+
+        //
+        // - Responsive
+        //
+
+        @media (min-width: globals.$screen-mobile) {
+            &--company {
+                display: table-cell;
+            }
+        }
+
+        @media (min-width: globals.$screen-tablet) {
+            &--email,
+            &--reference {
+                display: table-cell;
+            }
+        }
+
+        @media (min-width: globals.$screen-big-desktop) {
+            &--address,
+            &--note {
+                display: table-cell;
+            }
+        }
+    }
+}

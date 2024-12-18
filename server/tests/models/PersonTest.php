@@ -1,333 +1,102 @@
 <?php
 declare(strict_types=1);
 
-namespace Robert2\Tests;
+namespace Loxya\Tests;
 
-use Illuminate\Database\Eloquent\ModelNotFoundException;
-use Robert2\API\Models;
-use Robert2\API\Errors\ValidationException;
+use Loxya\Models\Person;
 
-final class PersonTest extends ModelTestCase
+final class PersonTest extends TestCase
 {
-    public function setup(): void
+    public function testValidation(): void
     {
-        parent::setUp();
-
-        $this->model = new Models\Person();
-    }
-
-    public function testTableName(): void
-    {
-        $this->assertEquals('persons', $this->model->getTable());
-    }
-
-    public function testGetAll(): void
-    {
-        $result = $this->model->getAll()->get()->toArray();
-        $this->assertCount(3, $result);
-    }
-
-    public function testSetSearch(): void
-    {
-        $this->model->setSearch('Jean');
-        $result = $this->model->getAll()->get()->toArray();
-        $this->assertCount(1, $result);
-        $this->assertEquals('Jean Fountain', $result[0]['full_name']);
-
-        $this->model->setSearch('Fount');
-        $result = $this->model->getAll()->get()->toArray();
-        $this->assertCount(1, $result);
-        $this->assertEquals('Jean Fountain', $result[0]['full_name']);
-
-        // - Search by reference
-        $this->model->setSearch('01');
-        $result = $this->model->getAll()->get()->toArray();
-        $this->assertCount(1, $result);
-        $this->assertEquals('Jean Fountain', $result[0]['full_name']);
-        $this->assertEquals('0001', $result[0]['reference']);
-
-        // - Search by company name
-        $this->model->setSearch('Testing');
-        $result = $this->model->getAll()->get()->toArray();
-        $this->assertCount(1, $result);
-        $this->assertEquals('Jean Fountain', $result[0]['full_name']);
-        $this->assertEquals(1, $result[0]['company_id']);
-    }
-
-    public function testGetAllFilteredOrTagged(): void
-    {
-        // - Récupération du matériel associées au tag "Beneficiary"
-        $tags = ['Beneficiary'];
-        $result = $this->model->getAllFilteredOrTagged([], $tags)->get()->toArray();
-        $this->assertCount(1, $result);
-
-        $options = ['country_id' => 1];
-        $result = $this->model->getAllFilteredOrTagged($options, $tags)->get()->toArray();
-        $this->assertEmpty($result);
-    }
-
-    public function testGetPerson(): void
-    {
-        $Person = $this->model::find(1);
-        $this->assertEquals([
-            'id' => 1,
-            'pseudo' => 'test1',
-            'email' => 'tester@robertmanager.net',
-            'group_id' => 'admin',
-            'person' => [
-                'id' => 1,
-                'user_id' => 1,
-                'first_name' => 'Jean',
-                'last_name' => 'Fountain',
-                'full_name' => 'Jean Fountain',
-                'reference' => '0001',
-                'nickname' => null,
-                'email' => 'tester@robertmanager.net',
-                'phone' => null,
-                'street' => '1, somewhere av.',
-                'postal_code' => '1234',
-                'locality' => 'Megacity',
-                'country_id' => 1,
-                'company_id' => 1,
-                'note' => null,
-                'created_at' => null,
-                'updated_at' => null,
-                'deleted_at' => null,
-                'company' => [
-                    'id' => 1,
-                    'legal_name' => 'Testing, Inc',
-                    'street' => '1, company st.',
-                    'postal_code' => '1234',
-                    'locality' => 'Megacity',
-                    'country_id' => 1,
-                    'phone' => '+4123456789',
-                    'note' => 'Just for tests',
-                    'created_at' => null,
-                    'updated_at' => null,
-                    'deleted_at' => null,
-                    'country' => [
-                        'id' => 1,
-                        'name' => 'France',
-                        'code' => 'FR',
-                    ],
-                ],
-                'country' => [
-                    'id' => 1,
-                    'name' => 'France',
-                    'code' => 'FR',
-                ],
-            ],
-        ], $Person->user);
-    }
-
-    public function testGetCompany(): void
-    {
-        $Person = $this->model::find(1);
-        $this->assertEquals([
-            'id'          => 1,
-            'legal_name'  => 'Testing, Inc',
-            'street'      => '1, company st.',
-            'postal_code' => '1234',
-            'locality'    => 'Megacity',
-            'country_id'  => 1,
-            'phone'       => '+4123456789',
-            'note'        => 'Just for tests',
-            'created_at'  => null,
-            'updated_at'  => null,
-            'deleted_at'  => null,
-            'country'     => [
-                'id'   => 1,
-                'name' => 'France',
-                'code' => 'FR',
-            ],
-        ], $Person->company);
-    }
-
-    public function testGetTags(): void
-    {
-        $Person   = $this->model::find(2);
-        $expected = [
-            ['id' => 1, 'name' => 'Technician'],
-            ['id' => 2, 'name' => 'Beneficiary'],
+        // - Avec un nom / prénom alambiqué, mais valide.
+        $data = [
+            'first_name' => 'Joséphine 1ère',
+            'last_name' => 'De Latour-Dupin',
         ];
-        $this->assertEquals($expected, $Person->tags);
-    }
+        $this->assertTrue((new Person($data))->isValid());
 
-    public function testSetTagsNoData(): void
-    {
-        $result = $this->model->setTags(1, null);
-        $this->assertEmpty($result);
-
-        $result = $this->model->setTags(1, []);
-        $this->assertEmpty($result);
-    }
-
-    public function testSetTagsNotFound(): void
-    {
-        $this->expectException(ModelNotFoundException::class);
-        $this->model->setTags(999, ['notFoundTag']);
-    }
-
-    public function testSetTags(): void
-    {
-        // - Empty tags
-        $result = $this->model->setTags(1, []);
-        $expected = [];
-        $this->assertEquals($expected, $result);
-
-        // - Set tags : one existing, and two new tags
-        $result = $this->model->setTags(2, ['Beneficiary', 'testTag', 'Last tag on the road']);
-        $expected = [
-            ['id' => 2, 'name' => 'Beneficiary'],
-            ['id' => 4, 'name' => 'testTag'],
-            ['id' => 5, 'name' => 'Last tag on the road'],
+        // - Si le nom et/ou prénom contiennent des caractères invalides...
+        $person = new Person([
+            'first_name' => 'xav1er-7e$t',
+            'last_name' => 'fo#32;reux',
+        ]);
+        $expectedErrors = [
+            'first_name' => "Ce champ contient des caractères non autorisés.",
+            'last_name' => "Ce champ contient des caractères non autorisés.",
         ];
-        $this->assertEquals($expected, $result);
+        $this->assertFalse($person->isValid());
+        $this->assertSame($expectedErrors, $person->validationErrors());
     }
 
-    public function testCreatePersonWithoutData(): void
+    public function testSearch(): void
     {
-        $this->expectException(ValidationException::class);
-        $this->expectExceptionCode(ERROR_VALIDATION);
-        $this->model->edit(null, []);
+        $results = Person::search('Jean')->get();
+        $this->assertCount(2, $results);
+        $this->assertEquals(
+            ['Jean Fountain', 'Jean Technicien'],
+            $results->pluck('full_name')->all(),
+        );
+
+        $results = Person::search('Fount')->get();
+        $this->assertCount(1, $results);
+        $this->assertEquals(['Jean Fountain'], $results->pluck('full_name')->all());
+
+        $results = Person::search('Jean F')->get();
+        $this->assertCount(1, $results);
+        $this->assertEquals(['Jean Fountain'], $results->pluck('full_name')->all());
+
+        $results = Person::search('Technicien Jean')->get();
+        $this->assertCount(1, $results);
+        $this->assertEquals(['Jean Technicien'], $results->pluck('full_name')->all());
     }
 
-    public function testCreatePersonBadData(): void
+    public function testEditNormalizePhone(): void
     {
-        $this->expectException(ValidationException::class);
-        $this->expectExceptionCode(ERROR_VALIDATION);
-        $this->model->edit(null, ['foo' => 'bar']);
-    }
-
-    public function testCreatePersonDuplicate(): void
-    {
-        $result = $this->model->edit(null, [
-            'first_name' => 'Jean',
-            'last_name' => 'Fountain',
-            'email' => 'tester@robertmanager.net',
+        // - Test 1 : Sans préfixe.
+        $resultPerson = Person::findOrFail(1)->edit([
+            'phone' => '06 25 25 21 25',
         ]);
-        $resultData = $result->toArray();
-        $this->assertEquals('1, somewhere av.', $resultData['street']);
-        $this->assertEquals('1234', $resultData['postal_code']);
-        $this->assertEquals('Megacity', $resultData['locality']);
+        $this->assertEquals('0625252125', $resultPerson->phone);
+
+        // - Test 2 : Avec préfixe `00`.
+        $resultPerson = Person::findOrFail(1)->edit([
+            'phone' => '00336 25 25 21 25',
+        ]);
+        $this->assertEquals('0033625252125', $resultPerson->phone);
+
+        // - Test 2 : Avec préfixe `+`.
+        $resultPerson = Person::findOrFail(1)->edit([
+            'phone' => '+336 25 25 21 25',
+        ]);
+        $this->assertEquals('+33625252125', $resultPerson->phone);
     }
 
-    public function testCreatePersonDuplicateRef(): void
+    public function testDeleteIfOrphan(): void
     {
-        $this->expectException(ValidationException::class);
-        $this->expectExceptionCode(ERROR_VALIDATION);
-        $this->model->edit(null, [
-            'first_name' => 'Paul',
-            'last_name' => 'Newtests',
-            'email' => 'paul@tests.new',
-            'reference' => '0001',
-        ]);
-    }
+        // - Test avec une personne liée à un bénéficiaire
+        $person = Person::find(1);
+        $person->deleteIfOrphan();
+        $this->assertNotEmpty(Person::find(1));
 
-    public function testCreatePerson(): void
-    {
-        // - Test d'ajout de personne, avec n° de téléphone et tags
-        $result = $this->model->edit(null, [
-            'first_name' => 'New',
-            'last_name'  => 'Tester',
-            'nickname'   => 'Jackmayol',
-            'email'      => 'tester3@robertmanager.net',
-            'phone'      => '+331 23 45 67 89',
-            'tags'       => ['newbie', 'people'],
-        ]);
-        $expected = [
-            'id'         => 4,
-            'first_name' => 'New',
-            'last_name'  => 'Tester',
-            'full_name'  => 'New Tester',
-            'nickname'   => 'Jackmayol',
-            'email'      => 'tester3@robertmanager.net',
-            'phone'      => '+33123456789',
-            'company'    => null,
-            'country'    => null,
-        ];
-        unset($result->created_at);
-        unset($result->updated_at);
-        $this->assertEquals($expected, $result->toArray());
+        // - Test avec une personne liée à un technicien
+        $person = Person::find(4);
+        $person->deleteIfOrphan();
+        $this->assertNotEmpty(Person::find(4));
 
-        $NewPerson = $this->model::find($result['id']);
-        $this->assertEquals([
-            ['id' => 4, 'name' => 'newbie'],
-            ['id' => 5, 'name' => 'people'],
-        ], $NewPerson->tags);
+        // - Test avec une personne liée à un utilisateur
+        $person = Person::find(4);
+        $person->deleteIfOrphan(false);
+        $this->assertNotEmpty(Person::find(4));
 
-        // - Test avec un n° de téléphone erroné
-        $this->expectExceptionCode(ERROR_VALIDATION);
-        $this->model->edit(null, [
-            'first_name' => 'Tester',
-            'last_name'  => 'Phoner',
-            'nickname'   => 'Fonfon',
-            'email'      => 'fonfon@robertmanager.net',
-            'phone'      => 'notAphoneNumber',
+        // - Test avec une personne "orpheline"
+        $person = Person::create([
+            'first_name' => "Marie",
+            'last_name' => "Testing",
+            'email' => "marie@testing.org",
         ]);
-    }
-
-    public function testUpdatePerson(): void
-    {
-        $result = $this->model->edit(1, [
-            'first_name' => '  Jeannot ',
-            'nickname' => ' testMan  ',
-            'reference' => '0003',
-        ]);
-        $expected = [
-            'id' => 1,
-            'user_id' => 1,
-            'first_name' => 'Jeannot',
-            'last_name' => 'Fountain',
-            'full_name' => 'Jeannot Fountain',
-            'reference' => '0003',
-            'nickname' => 'testMan',
-            'email' => 'tester@robertmanager.net',
-            'phone' => null,
-            'street' => '1, somewhere av.',
-            'postal_code' => '1234',
-            'locality' => 'Megacity',
-            'country_id' => 1,
-            'company_id' => 1,
-            'note' => null,
-            'company' => [
-                'id' => 1,
-                'legal_name' => 'Testing, Inc',
-                'street' => '1, company st.',
-                'postal_code' => '1234',
-                'locality' => 'Megacity',
-                'country_id' => 1,
-                'phone' => '+4123456789',
-                'note' => 'Just for tests',
-                'created_at' => null,
-                'updated_at' => null,
-                'deleted_at' => null,
-                'country' => [
-                    'id' => 1,
-                    'name' => 'France',
-                    'code' => 'FR',
-                ],
-            ],
-            'country' => [
-                'id' => 1,
-                'name' => 'France',
-                'code' => 'FR',
-            ],
-        ];
-        unset($result->created_at);
-        unset($result->updated_at);
-        unset($result->deleted_at);
-        $this->assertEquals($expected, $result->toArray());
-    }
-
-    public function testUpdatePersonDuplicateRef(): void
-    {
-        $this->expectException(ValidationException::class);
-        $this->expectExceptionCode(ERROR_VALIDATION);
-        $this->model->edit(1, [
-            'first_name' => '  Jeannot ',
-            'nickname' => ' testMan  ',
-            'reference' => '0002',
-        ]);
+        $createdPersonId = $person->id;
+        $person->deleteIfOrphan();
+        $this->assertNull(Person::find($createdPersonId));
     }
 }

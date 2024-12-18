@@ -1,79 +1,123 @@
 <?php
 declare(strict_types=1);
 
-namespace Robert2\API\Controllers;
+namespace Loxya\Controllers;
 
 use DI\Container;
-use Robert2\API\Config\Config;
-use Robert2\API\Services\View;
+use Fig\Http\Message\StatusCodeInterface as StatusCode;
+use Loxya\Config\Config;
+use Loxya\Http\Request;
+use Loxya\Models\Event;
+use Loxya\Models\Material;
+use Loxya\Services\Auth;
+use Loxya\Services\I18n;
+use Loxya\Services\View;
+use Odan\Session\FlashInterface;
+use Psr\Http\Message\ResponseInterface;
+use Slim\Exception\HttpNotFoundException;
 use Slim\Http\Response;
-use Slim\Http\ServerRequest as Request;
 
-class EntryController extends BaseController
+final class EntryController extends BaseController
 {
-    /** @var View */
-    private $view;
+    private I18n $i18n;
 
-    /** @var array */
-    private $settings;
+    private View $view;
 
-    public function __construct(Container $container, View $view)
-    {
+    private FlashInterface $flash;
+
+    private Auth $auth;
+
+    public function __construct(
+        Container $container,
+        I18n $i18n,
+        View $view,
+        FlashInterface $flash,
+        Auth $auth,
+    ) {
         parent::__construct($container);
 
         $this->view = $view;
-        $this->settings = $container->get('settings');
+        $this->flash = $flash;
+        $this->i18n = $i18n;
+        $this->auth = $auth;
     }
 
-    public function index(Request $request, Response $response)
+    public function default(Request $request, Response $response): ResponseInterface
     {
         if (!Config::customConfigExists()) {
-            return $response->withRedirect('/install', 302); // 302 Redirect
+            return $response->withRedirect('/install', 302); // - 302 Redirect.
         }
 
-        $serverConfig = $this->getServerConfig();
-        return $this->view->render($response, 'webclient.twig', \compact('serverConfig'));
+        return $this->view->render($response, 'entries/default.twig', [
+            'serverConfig' => $this->getServerConfig(),
+            'flashMessages' => $this->getFlashMessages(),
+        ]);
+    }
+
+    public function healthcheck(Request $request, Response $response): ResponseInterface
+    {
+        $enabled = Config::get('healthcheck', false);
+        if (!$enabled) {
+            throw new HttpNotFoundException($request, "Health check not enabled.");
+        }
+
+        $lastUpdate = max([
+            Material::orderBy('updated_at', 'DESC')->first()->updated_at,
+            Event::orderBy('updated_at', 'DESC')->first()->updated_at,
+        ]);
+
+        return $response->withJson(['last_update' => $lastUpdate?->format('Y-m-d H:i:s')], StatusCode::STATUS_OK);
     }
 
     // ------------------------------------------------------
     // -
-    // -    Internal methods
+    // -    Méthodes internes
     // -
     // ------------------------------------------------------
 
-    protected function getServerConfig(): string
+    private function getServerConfig(): array
     {
-        $rawConfig = $this->settings;
-        $baseUrl = preg_replace('/\/$/', '', $rawConfig['apiUrl']);
+        $rawConfig = Config::get();
 
-        $config = [
-            'baseUrl' => $baseUrl,
+        // - Uris
+        $baseUri = Config::getBaseUri();
+        $apiUri = $baseUri->withPath('/api');
+
+        return [
+            'baseUrl' => (string) $baseUri,
+            'isSslEnabled' => Config::isSslEnabled(),
+            'version' => Config::getVersion(),
             'api' => [
-                'url' => $baseUrl . '/api',
+                'url' => (string) $apiUri,
                 'headers' => $rawConfig['apiHeaders'],
-                'version' => Config::getVersion(),
             ],
             'auth' => [
                 'cookie' => $rawConfig['auth']['cookie'],
                 'timeout' => $rawConfig['sessionExpireHours'],
             ],
+            'companyName' => $rawConfig['companyData']['name'],
             'defaultPaginationLimit' => $rawConfig['maxItemsPerPage'],
+            'maxConcurrentFetches' => $rawConfig['maxConcurrentFetches'],
             'defaultLang' => $rawConfig['defaultLang'],
             'currency' => $rawConfig['currency'],
-            'beneficiaryTagName' => $rawConfig['defaultTags']['beneficiary'],
-            'technicianTagName' => $rawConfig['defaultTags']['technician'],
-            'billingMode' => $rawConfig['billingMode'],
-            'degressiveRate' => sprintf(
-                'function (daysCount) { return %s; }',
-                $rawConfig['degressiveRateFunction']
-            ),
+            'billingMode' => $rawConfig['billingMode']->value,
+            'maxFileUploadSize' => $rawConfig['maxFileUploadSize'],
+            'authorizedFileTypes' => $rawConfig['authorizedFileTypes'],
+            'authorizedImageTypes' => $rawConfig['authorizedImageTypes'],
+            'colorSwatches' => $rawConfig['colorSwatches'],
         ];
+    }
 
-        // TODO: Passer la formule `$rawConfig['degressiveRateFunction']` directement au js
-        //       sans la wrappée dans une fonction et utiliser le filtre twig
-        //       `| json_encode(constant('Robert2\\API\\Config\\Config::JSON_OPTIONS'))`
-        $jsonConfig = json_encode($config, Config::JSON_OPTIONS);
-        $jsonConfig = preg_replace('/"degressiveRate": "/', '"degressiveRate": ', $jsonConfig);
-        return preg_replace('/}"/', '}', $jsonConfig);
+    private function getFlashMessages(): array
+    {
+        $messages = [];
+        $rawMessageTypes = $this->flash->all();
+        foreach ($rawMessageTypes as $type => $rawMessages) {
+            foreach ($rawMessages as $rawMessage) {
+                $message = $this->i18n->translate(sprintf('flash.%s', $rawMessage));
+                $messages[] = compact('type', 'message');
+            }
+        }
+        return $messages;
     }
 }

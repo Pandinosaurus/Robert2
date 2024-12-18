@@ -1,0 +1,119 @@
+@use '~@/themes/default/style/globals';
+
+.EventDetailsInfos {
+    display: flex;
+    flex-direction: column;
+
+    &__summary {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        margin-bottom: 10px;
+        font-size: 1.1rem;
+        gap: globals.$spacing-small;
+
+        &__beneficiaries,
+        &__location,
+        &__people {
+            flex: 0 0 auto;
+            max-width: 100%;
+            margin-bottom: 10px;
+        }
+
+        &__beneficiaries {
+            &__list {
+                margin-bottom: 10px;
+                font-size: 1.2rem;
+
+                &__icon {
+                    width: 1.5rem;
+                    margin-right: globals.$spacing-thin;
+                    text-align: center;
+                }
+
+                &__content {
+                    margin-left: globals.$spacing-thin;
+                }
+            }
+        }
+
+        &__people {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        &__author {
+            margin: 0;
+
+            @include globals.icon('user') {
+                width: 20px;
+            }
+        }
+
+        &__location {
+            margin: 0;
+
+            @include globals.icon('map-marker-alt') {
+                width: 20px;
+            }
+
+            &__link {
+                margin-left: 5px;
+            }
+        }
+
+        &__preparer {
+            margin: 0;
+
+            @include globals.icon('dolly') {
+                width: 25px;
+            }
+        }
+    }
+
+    &__no-beneficiary,
+    &__no-material {
+        color: globals.$text-danger-color;
+        font-size: 1.2rem;
+        text-align: center;
+
+        @include globals.icon('exclamation-triangle') {
+            width: 30px;
+        }
+    }
+
+    &__description,
+    &__confirmation {
+        margin-bottom: globals.$spacing-large;
+        font-size: 1.2rem;
+    }
+
+    &__description {
+        margin-top: 0;
+        color: globals.$text-soft-color;
+        line-height: 1.5;
+        white-space: pre-wrap;
+
+        @include globals.icon('clipboard') {
+            width: 30px;
+        }
+    }
+
+    &__confirmation {
+        color: globals.$text-warning-color;
+        text-align: center;
+
+        @include globals.icon('hourglass-half') {
+            width: 30px;
+        }
+
+        &--confirmed {
+            color: globals.$text-success-color;
+
+            @include globals.icon('check') {
+                width: 30px;
+            }
+        }
+    }
+}

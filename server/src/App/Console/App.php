@@ -1,10 +1,11 @@
 <?php
 declare(strict_types=1);
 
-namespace Robert2\API\Console;
+namespace Loxya\Console;
 
-use Robert2\API\Config\Config;
-use Robert2\API\Kernel;
+use DI\Container;
+use Loxya\Config\Config;
+use Loxya\Kernel;
 use Symfony\Component\Console\Application as BaseApplication;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Command\ListCommand;
@@ -14,18 +15,18 @@ use Symfony\Component\Console\Output\ConsoleOutputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
 
-class App extends BaseApplication
+final class App extends BaseApplication
 {
-    private $kernel;
+    private Container $container;
 
     private $commandsRegistered = false;
     private $registrationErrors = [];
 
-    public function __construct(?Kernel $kernel = null)
+    public function __construct()
     {
-        $this->kernel = $kernel ?? new Kernel;
+        $this->container = Kernel::boot()->getContainer();
 
-        parent::__construct('Robert2', Config::getVersion());
+        parent::__construct('Loxya', Config::getVersion());
 
         /* phpcs:disable Generic.Files.LineLength.TooLong */
         $inputDefinition = $this->getDefinition();
@@ -34,9 +35,7 @@ class App extends BaseApplication
     }
 
     /**
-     * Runs the current application.
-     *
-     * @return int 0 if everything went fine, or an error code
+     * {@inheritdoc}
      */
     public function doRun(InputInterface $input, OutputInterface $output)
     {
@@ -47,30 +46,6 @@ class App extends BaseApplication
         }
 
         return parent::doRun($input, $output);
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    protected function doRunCommand(Command $command, InputInterface $input, OutputInterface $output)
-    {
-        if (!$command instanceof ListCommand) {
-            if ($this->registrationErrors) {
-                $this->renderRegistrationErrors($input, $output);
-                $this->registrationErrors = [];
-            }
-
-            return parent::doRunCommand($command, $input, $output);
-        }
-
-        $returnCode = parent::doRunCommand($command, $input, $output);
-
-        if ($this->registrationErrors) {
-            $this->renderRegistrationErrors($input, $output);
-            $this->registrationErrors = [];
-        }
-
-        return $returnCode;
     }
 
     /**
@@ -96,7 +71,7 @@ class App extends BaseApplication
     /**
      * {@inheritdoc}
      */
-    public function all(string $namespace = null)
+    public function all(?string $namespace = null)
     {
         $this->registerCommands();
 
@@ -113,19 +88,45 @@ class App extends BaseApplication
         return parent::add($command);
     }
 
-    protected function registerCommands()
+    // ------------------------------------------------------
+    // -
+    // -    Méthodes internes.
+    // -
+    // ------------------------------------------------------
+
+    /**
+     * {@inheritdoc}
+     */
+    protected function doRunCommand(Command $command, InputInterface $input, OutputInterface $output)
+    {
+        if (!$command instanceof ListCommand) {
+            if ($this->registrationErrors) {
+                $this->renderRegistrationErrors($input, $output);
+                $this->registrationErrors = [];
+            }
+
+            return parent::doRunCommand($command, $input, $output);
+        }
+
+        $returnCode = parent::doRunCommand($command, $input, $output);
+
+        if ($this->registrationErrors) {
+            $this->renderRegistrationErrors($input, $output);
+            $this->registrationErrors = [];
+        }
+
+        return $returnCode;
+    }
+
+    protected function registerCommands(): void
     {
         if ($this->commandsRegistered) {
             return;
         }
         $this->commandsRegistered = true;
 
-        $this->kernel->boot();
-
-        $container = $this->kernel->getContainer();
-
-        if ($container->has('console.commands')) {
-            foreach ($container->get('console.commands') as $command) {
+        if ($this->container->has('console.commands')) {
+            foreach ($this->container->get('console.commands') as $command) {
                 try {
                     $this->add($command);
                 } catch (\Throwable $e) {
@@ -135,7 +136,7 @@ class App extends BaseApplication
         }
     }
 
-    private function renderRegistrationErrors(InputInterface $input, OutputInterface $output)
+    protected function renderRegistrationErrors(InputInterface $input, OutputInterface $output): void
     {
         if ($output instanceof ConsoleOutputInterface) {
             $output = $output->getErrorOutput();

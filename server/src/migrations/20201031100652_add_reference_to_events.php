@@ -1,11 +1,11 @@
 <?php
-// phpcs:disable PSR1.Classes.ClassDeclaration.MissingNamespace
+declare(strict_types=1);
 
 use Phinx\Migration\AbstractMigration;
 
-class AddReferenceToEvents extends AbstractMigration
+final class AddReferenceToEvents extends AbstractMigration
 {
-    public function up()
+    public function up(): void
     {
         $events = $this->table('events');
         $events
@@ -16,12 +16,12 @@ class AddReferenceToEvents extends AbstractMigration
             ])
             ->addIndex(['reference'], [
                 'unique' => true,
-                'name'   => 'reference_UNIQUE'
+                'name' => 'reference_UNIQUE',
             ])
             ->update();
     }
 
-    public function down()
+    public function down(): void
     {
         $events = $this->table('events');
         $events
@@ -29,5 +29,3 @@ class AddReferenceToEvents extends AbstractMigration
             ->update();
     }
 }
-
-// phpcs:enable

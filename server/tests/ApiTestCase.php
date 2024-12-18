@@ -1,141 +1,200 @@
 <?php
 declare(strict_types=1);
 
-namespace Robert2\Tests;
+namespace Loxya\Tests;
 
-use Robert2\API\App;
-use PHPUnit\Framework\TestCase;
+use Fig\Http\Message\StatusCodeInterface as StatusCode;
+use Loxya\App;
+use Loxya\Errors\Enums\ApiErrorCode;
+use Loxya\Kernel;
+use Loxya\Services\Auth;
 
-class ApiTestCase extends TestCase
+abstract class ApiTestCase extends TestCase
 {
-    use SettingsTrait {
-        setUp as baseSetUp;
-    }
+    protected App $app;
 
-    /** @var App */
-    protected $app;
-
-    /** @var ApiTestClient */
-    protected $client;
+    protected ApiTestClient $client;
 
     protected function setUp(): void
     {
-        $this->baseSetUp();
+        parent::setUp();
 
-        $this->app = new App;
+        $this->app = new App();
         $this->client = new ApiTestClient($this->app);
 
-        // - Test specific configuration
+        // - Configuration spécifique aux tests.
         $this->app->add(new \Slim\HttpCache\Cache('private', 0));
     }
 
-    // ——————————————————————————————————————————————————————
-    // —
-    // —    Assertion methods
-    // —
-    // ——————————————————————————————————————————————————————
+    protected function tearDown(): void
+    {
+        parent::tearDown();
+
+        Auth::reset();
+        Kernel::reset();
+    }
+
+    // ------------------------------------------------------
+    // -
+    // -    Assertion methods
+    // -
+    // ------------------------------------------------------
 
     public function assertStatusCode(int $expectedCode): void
     {
-        $actualCode = $this->_getStatusCode();
+        $actualCode = $this->client->getResponseHttpCode();
 
-        if ($expectedCode !== 500 && $actualCode === 500) {
-            $response = $this->_getResponseAsArray();
-            $message = sprintf(
-                "%s, in %s\n",
-                $response['error']['message'],
-                $response['error']['debug']['file']
-            );
-            throw new \Exception($message, (int)$response['error']['code']);
-        }
-
-        $this->assertEquals($expectedCode, $this->_getStatusCode());
-    }
-
-    public function assertErrorMessage(string $message): void
-    {
-        $result = $this->_getResponseAsArray();
-        if (!isset($result['error']['message'])) {
-            $this->fail(sprintf(
-                "No expected error message. Actual output:\n%s",
-                json_encode($result, JSON_PRETTY_PRINT)
-            ));
-        }
-        $this->assertEquals($message, $result['error']['message']);
-    }
-
-    public function assertNotFound(): void
-    {
-        $this->assertStatusCode(ERROR_NOT_FOUND);
-        $this->assertErrorMessage("Not found.");
-    }
-
-    public function assertValidationErrorMessage(): void
-    {
-        $this->assertErrorMessage(
-            "Validation failed. See error[details] for more informations."
+        $this->assertEquals(
+            $expectedCode,
+            $actualCode,
+            vsprintf(
+                "The HTTP error code `%s` does not match expected `%s`.\nFull output:\n%s",
+                [$actualCode, $expectedCode, $this->client->getResponseAsString()],
+            ),
         );
     }
 
-    public function assertErrorDetails(array $details): void
+    public function assertApiError(ApiErrorCode $code, ?string $message = null): void
     {
-        $result = $this->_getResponseAsArray();
-        $this->assertEquals($details, $result['error']['details']);
-    }
+        $result = $this->client->getResponseAsArray();
 
-    public function assertResponseData(array $expectedData, array $fakeTestFields = []): void
-    {
-        $response = $this->_getResponseAsArray();
-
-        foreach ($fakeTestFields as $field) {
-            if (isset($response[$field])) {
-                $response[$field] = 'fakedTestContent';
-            }
+        foreach (['success', 'error'] as $key) {
+            $this->assertArrayHasKey($key, $result, sprintf(
+                "The expected error payload is missing. Actual output:\n%s",
+                json_encode($result, JSON_PRETTY_PRINT),
+            ));
         }
 
-        $this->assertEquals($expectedData, $response);
-    }
-
-    public function assertResponsePaginatedData(int $count, string $baseUrl, string $extraParams = ''): void
-    {
-        $response    = $this->_getResponseAsArray();
-        $extraParams = !empty($extraParams) ? $extraParams . '&' : '';
-
-        $this->assertEquals([
-            'current_page'   => 1,
-            'first_page_url' => "$baseUrl?" . $extraParams . "page=1",
-            'from'           => $count ? 1 : null,
-            'last_page'      => 1,
-            'last_page_url'  => "$baseUrl?" . $extraParams . "page=1",
-            'next_page_url'  => null,
-            'path'           => $baseUrl,
-            'per_page'       => 100,
-            'prev_page_url'  => null,
-            'to'             => $count ?: null,
-            'total'          => $count,
-        ], @$response['pagination']);
-
-        $this->assertCount($count, @$response['data']);
-    }
-
-    // ——————————————————————————————————————————————————————
-    // —
-    // —    Protected methods
-    // —
-    // ——————————————————————————————————————————————————————
-
-    protected function _getStatusCode(): ?int
-    {
-        if (empty($this->client->response)) {
-            return null;
+        $this->assertFalse($result['success']);
+        $this->assertApiErrorCode($code);
+        if ($message !== null) {
+            $this->assertApiErrorMessage($message);
         }
-        return $this->client->response->getStatusCode();
     }
 
-    protected function _getResponseAsArray(): ?array
+    public function assertApiErrorCode(ApiErrorCode $code): void
     {
-        $response = (string)$this->client->response->getBody();
+        $result = $this->client->getResponseAsArray();
 
-        return json_decode($response, true);
+        if (!isset($result['error']['code'])) {
+            $this->fail(sprintf(
+                "The expected error code is missing. Actual output:\n%s",
+                json_encode($result, JSON_PRETTY_PRINT),
+            ));
+        }
+
+        $resultCode = $result['error']['code'];
+        $this->assertSame(
+            $code->value,
+            $resultCode,
+            vsprintf(
+                "The API error code `%s` does not match expected `%s`.\nFull output:\n%s",
+                [$resultCode, $code->value, json_encode($result, JSON_PRETTY_PRINT)],
+            ),
+        );
+    }
+
+    public function assertApiErrorMessage(string $message): void
+    {
+        $result = $this->client->getResponseAsArray();
+
+        if (!isset($result['error']['message'])) {
+            $this->fail(sprintf(
+                "The expected error message is missing.\nFull output:\n%s",
+                json_encode($result, JSON_PRETTY_PRINT),
+            ));
+        }
+
+        $resultMessage = $result['error']['message'];
+        $this->assertSame(
+            $message,
+            $resultMessage,
+            sprintf(
+                "The API error message does not match the expected one (got \"%s\" instead of \"%s\").\n" .
+                "Full output:\n%s",
+                is_string($resultMessage) ? $resultMessage : var_export($resultMessage, true),
+                $message,
+                json_encode($result, JSON_PRETTY_PRINT),
+            ),
+        );
+    }
+
+    public function assertApiValidationError($details = null): void
+    {
+        $this->assertStatusCode(StatusCode::STATUS_BAD_REQUEST);
+        $this->assertApiErrorCode(ApiErrorCode::VALIDATION_FAILED);
+
+        if ($details !== null) {
+            $result = $this->client->getResponseAsArray();
+            $this->assertSameCanonicalize($details, $result['error']['details']);
+        }
+    }
+
+    public function assertResponseData(mixed $expectedData): void
+    {
+        $response = $this->client->getResponseAsDecodedJson();
+        $this->assertSameCanonicalize($expectedData, $response);
+    }
+
+    public function assertResponseHasKey(string $path): void
+    {
+        $response = $this->client->getResponseAsDotArray();
+
+        $this->assertTrue($response->has($path), sprintf("The key \"%s\" does not exist in the answer.", $path));
+    }
+
+    public function assertResponseHasNotKey(string $path): void
+    {
+        $response = $this->client->getResponseAsDotArray();
+
+        $this->assertFalse($response->has($path), sprintf("The key \"%s\" exists in the answer.", $path));
+    }
+
+    public function assertResponseHasKeyEquals(string $path, $expectedValue): void
+    {
+        $response = $this->client->getResponseAsDotArray();
+
+        $this->assertTrue($response->has($path), sprintf("The key \"%s\" does not exist in the answer.", $path));
+        $this->assertSameCanonicalize($expectedValue, $response->get($path));
+    }
+
+    public function assertResponseHasKeyNotEquals(string $path, $expectedValue): void
+    {
+        $response = $this->client->getResponseAsDotArray();
+
+        $this->assertTrue($response->has($path), sprintf("The key \"%s\" does not exist in the answer.", $path));
+        $this->assertNotSameCanonicalize($expectedValue, $response->get($path));
+    }
+
+    public function assertResponsePaginatedData(int $totalCount, $expectedData = null): void
+    {
+        $response = $this->client->getResponseAsDotArray();
+
+        $this->assertTrue(
+            $response->has(['pagination', 'data']),
+            "The answer doesn't seem to be paginated.",
+        );
+
+        $data = $response->get('data');
+
+        // - Vérifie les données de pagination.
+        $this->assertSame($totalCount, $response->get('pagination.total.items'));
+
+        // - Vérifie les données paginées (optionnel).
+        if ($expectedData !== null) {
+            $this->assertSameCanonicalize($expectedData, $data);
+        }
+    }
+
+    // ------------------------------------------------------
+    // -
+    // -    Méthodes internes
+    // -
+    // ------------------------------------------------------
+
+    protected static function dataFactory($id, array $data)
+    {
+        $data = array_column($data, null, 'id');
+        return $id ? $data[$id] : array_values($data);
     }
 }

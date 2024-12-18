@@ -1,168 +1,133 @@
 <?php
-namespace Robert2\Tests;
+declare(strict_types=1);
+
+namespace Loxya\Tests;
+
+use Fig\Http\Message\StatusCodeInterface as StatusCode;
+use Illuminate\Support\Collection;
+use Loxya\Models\Category;
+use Loxya\Support\Arr;
 
 final class CategoriesTest extends ApiTestCase
 {
-    public function testGetCategories()
+    public static function data(?int $id = null, string $format = Category::SERIALIZE_DEFAULT)
+    {
+        $categories = new Collection([
+            [
+                'id' => 1,
+                'name' => 'Son',
+                'sub_categories' => [
+                    SubCategoriesTest::data(1),
+                    SubCategoriesTest::data(2),
+                ],
+            ],
+            [
+                'id' => 2,
+                'name' => 'Lumière',
+                'sub_categories' => [
+                    SubCategoriesTest::data(4),
+                    SubCategoriesTest::data(3),
+                ],
+            ],
+            [
+                'id' => 3,
+                'name' => 'Transport',
+                'sub_categories' => [],
+            ],
+            [
+                'id' => 4,
+                'name' => 'Décors',
+                'sub_categories' => [],
+            ],
+        ]);
+
+        $categories = match ($format) {
+            Category::SERIALIZE_DEFAULT => $categories->map(static fn ($category) => (
+                Arr::except($category, ['sub_categories'])
+            )),
+            Category::SERIALIZE_DETAILS => $categories,
+            default => throw new \InvalidArgumentException(sprintf("Unknown format \"%s\"", $format)),
+        };
+
+        return static::dataFactory($id, $categories->all());
+    }
+
+    public function testGetAll(): void
     {
         $this->client->get('/api/categories');
-        $this->assertStatusCode(SUCCESS_OK);
+        $this->assertStatusCode(StatusCode::STATUS_OK);
         $this->assertResponseData([
-            'pagination' => [
-                'current_page' => 1,
-                'from' => 1,
-                'last_page' => 1,
-                'path' => '/api/categories',
-                'first_page_url' => '/api/categories?page=1',
-                'next_page_url' => null,
-                'prev_page_url' => null,
-                'last_page_url' => '/api/categories?page=1',
-                'per_page' => $this->settings['maxItemsPerPage'],
-                'to' => 4,
-                'total' => 4,
-            ],
-            'data' => [
-                [
-                    'id' => 4,
-                    'name' => 'Décors',
-                    'created_at' => null,
-                    'updated_at' => null,
-                    'sub_categories' => [],
-                ],
-                [
-                    'id' => 2,
-                    'name' => 'light',
-                    'created_at' => null,
-                    'updated_at' => null,
-                    'sub_categories' => [
-                        [
-                            'id' => 4,
-                            'name' => 'dimmers',
-                            'category_id' => 2,
-                        ],
-                        [
-                            'id' => 3,
-                            'name' => 'projectors',
-                            'category_id' => 2,
-                        ],
-                    ],
-                ],
-                [
-                    'id' => 1,
-                    'name' => 'sound',
-                    'created_at' => null,
-                    'updated_at' => null,
-                    'sub_categories' => [
-                        [
-                            'id' => 1,
-                            'name' => 'mixers',
-                            'category_id' => 1,
-                        ],
-                        [
-                            'id' => 2,
-                            'name' => 'processors',
-                            'category_id' => 1,
-                        ],
-                    ],
-                ],
-                [
-                    'id' => 3,
-                    'name' => 'transport',
-                    'created_at' => null,
-                    'updated_at' => null,
-                    'sub_categories' => [],
-                ],
-            ],
+            self::data(4, Category::SERIALIZE_DETAILS),
+            self::data(2, Category::SERIALIZE_DETAILS),
+            self::data(1, Category::SERIALIZE_DETAILS),
+            self::data(3, Category::SERIALIZE_DETAILS),
         ]);
     }
 
-    public function testGetCategorieNotFound()
+    public function testCreateWithoutData(): void
     {
-        $this->client->get('/api/categories/999');
-        $this->assertNotFound();
+        $this->client->post('/api/categories');
+        $this->assertStatusCode(StatusCode::STATUS_BAD_REQUEST);
+        $this->assertApiErrorMessage("No data was provided.");
     }
 
-    public function testGetCategory()
+    public function testCreateBadData(): void
     {
-        $this->client->get('/api/categories/1');
-        $this->assertStatusCode(SUCCESS_OK);
-        $this->assertResponseData([
-            'id' => 1,
-            'name' => 'sound',
-            'created_at' => null,
-            'updated_at' => null,
-            'sub_categories' => [
-                [
-                    'id' => 1,
-                    'name' => 'mixers',
-                    'category_id' => 1,
-                ],
-                [
-                    'id' => 2,
-                    'name' => 'processors',
-                    'category_id' => 1,
-                ],
-            ],
+        $this->client->post('/api/categories', [
+            'name' => '',
+        ]);
+        $this->assertApiValidationError([
+            'name' => "This field is mandatory.",
         ]);
     }
 
-    public function testCreateCategory()
+    public function testCreate(): void
     {
-        $this->client->post('/api/categories', ['name' => 'New Category']);
-        $this->assertStatusCode(SUCCESS_CREATED);
+        $this->client->post('/api/categories', [
+            'name' => 'New Category',
+        ]);
+
+        $this->assertStatusCode(StatusCode::STATUS_CREATED);
         $this->assertResponseData([
             'id' => 5,
             'name' => 'New Category',
             'sub_categories' => [],
-            'created_at' => 'fakedTestContent',
-            'updated_at' => 'fakedTestContent',
-        ], ['created_at', 'updated_at']);
+        ]);
     }
 
-    public function testUpdateCategoryNoData()
+    public function testUpdateNoData(): void
     {
         $this->client->put('/api/categories/1', []);
-        $this->assertStatusCode(ERROR_VALIDATION);
-        $this->assertErrorMessage("Missing request data to process validation");
+        $this->assertStatusCode(StatusCode::STATUS_BAD_REQUEST);
+        $this->assertApiErrorMessage("No data was provided.");
     }
 
-    public function testUpdateCategoryNotFound()
+    public function testUpdateCategoryNotFound(): void
     {
         $this->client->put('/api/categories/999', ['name' => '__inexistant__']);
-        $this->assertNotFound();
+        $this->assertStatusCode(StatusCode::STATUS_NOT_FOUND);
     }
 
-    public function testUpdateCategory()
+    public function testUpdate(): void
     {
-        $this->client->put('/api/categories/1', ['name' => 'Sound edited']);
-        $this->assertStatusCode(SUCCESS_OK);
-        $this->assertResponseData([
-            'id' => 1,
+        $this->client->put('/api/categories/1', [
             'name' => 'Sound edited',
-            'created_at' => null,
-            'updated_at' => 'fakedTestContent',
-            'sub_categories' => [
-                [
-                    'id' => 1,
-                    'name' => 'mixers',
-                    'category_id' => 1,
-                ],
-                [
-                    'id' => 2,
-                    'name' => 'processors',
-                    'category_id' => 1,
-                ],
+        ]);
+        $this->assertStatusCode(StatusCode::STATUS_OK);
+        $this->assertResponseData(array_replace(
+            self::data(1, Category::SERIALIZE_DETAILS),
+            [
+                'name' => 'Sound edited',
             ],
-        ], ['updated_at']);
+        ));
     }
 
-    public function testDeleteCategory()
+    public function testDelete(): void
     {
         $this->client->delete('/api/categories/3');
-        $this->assertStatusCode(SUCCESS_OK);
-        $this->assertResponseData(['destroyed' => true]);
+        $this->assertStatusCode(StatusCode::STATUS_NO_CONTENT);
 
         $this->client->get('/api/categories/3');
-        $this->assertNotFound();
+        $this->assertStatusCode(StatusCode::STATUS_NOT_FOUND);
     }
 }

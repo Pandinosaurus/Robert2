@@ -1,0 +1,23 @@
+@use '~@/themes/default/style/globals';
+
+.InterfaceUserSettings {
+    display: flex;
+    flex-direction: column;
+
+    &__loading {
+        margin-top: globals.$spacing-medium;
+    }
+
+    &__language {
+        --input-width: 180px;
+    }
+
+    &__default-bookings-view {
+        --input-width: 280px;
+    }
+
+    &__actions {
+        margin-top: globals.$spacing-large;
+        text-align: center;
+    }
+}

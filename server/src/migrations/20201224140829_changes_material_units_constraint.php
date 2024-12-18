@@ -1,9 +1,11 @@
 <?php
+declare(strict_types=1);
+
 use Phinx\Migration\AbstractMigration;
 
-class ChangesMaterialUnitsConstraint extends AbstractMigration
+final class ChangesMaterialUnitsConstraint extends AbstractMigration
 {
-    public function up()
+    public function up(): void
     {
         $table = $this->table('event_material_units');
         $table->dropForeignKey('material_unit_id')->save();
@@ -16,7 +18,7 @@ class ChangesMaterialUnitsConstraint extends AbstractMigration
             ->save();
     }
 
-    public function down()
+    public function down(): void
     {
         $table = $this->table('event_material_units');
         $table->dropForeignKey('material_unit_id')->save();

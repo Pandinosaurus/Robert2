@@ -1,0 +1,27 @@
+title: Your settings
+saved: Settings saved.
+
+#
+# - Tabs
+#
+
+profile:
+    title: Your profile
+
+    new-password: New password
+    new-password-help: Only fill this section if you want to change your password.
+
+    password-confirmation: Password confirmation
+    password-confirmation-must-match: Password and its confirmation must be identical.
+
+    saved: Your informations have been successfully saved.
+    saved-with-password: Your informations and your new password have been successfully saved.
+
+interface:
+    title: Interface
+
+    language: Language
+    default-bookings-view: Default view of events
+    booking-view-mode:
+        calendar: Timeline
+        listing: List

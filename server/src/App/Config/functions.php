@@ -1,301 +1,178 @@
 <?php
 declare(strict_types=1);
 
+use DI\Container;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\QueryException;
-use Psr\Http\Message\UploadedFileInterface;
+use Loxya\Config\Config;
+use Loxya\Kernel;
+use Monolog\Level as LogLevel;
+use Slim\Interfaces\RouteParserInterface;
 
 /**
- * Print a variable, and exit current script (or not)
+ * Retourne le conteneur courant ou le service lié à l'id dans le conteneur si fourni.
  *
- * Options:
- * - `log` (bool): Wether to log the debug in `/var/log` instead of direct output (default `false`)
- * - `append` (bool): Wether to append to log file instead of replace (default `true`)
+ * NOTE: À n'utiliser que dans les cas ou l'auto-wiring n'est pas disponible.
  *
- * @param mixed $var     Variable to monitor.
- * @param array $options See "Options" above.
+ * @param string $id (optional) Un éventuel identifiant de service à retourner.
  *
- * @return void
+ * @return mixed Le conteneur lui-même si aucun identifiant n'est passé, le service lié à l'id sinon.
+ */
+function container(?string $id = null): mixed
+{
+    /** @var Container $container */
+    $container = Kernel::get()->getContainer();
+    return $id ? $container->get($id) : $container;
+}
+
+/**
+ * Ajoute une entrée de log de type "debug".
+ *
+ * Le fonctionnement de cette fonction est similaire à celui de la fonction `sprintf`.
+ * (Uniquement dans le cas ou `$message` est une chaîne de caractères)
+ *
+ * @param mixed $message    Le message ou la variable à logger.
+ * @param string[] ...$vars Les variables utilisées pour remplir les placeholders de `$message`.
+ *                          Voir le fonctionnement de `sprintf()`.
  *
  * @codeCoverageIgnore
  */
-function debug($var = null, array $options = []): void
+function debug($message, ...$vars): void
 {
-    $options = array_merge([
-        'log' => false,
-        'append' => true,
-    ], $options);
+    $parts = [];
 
-    if ($options['log']) {
-        $backtrace = debug_backtrace();
-        $caller = array_shift($backtrace);
-        $displayVar = var_export($var, true);
-
-        $debug = sprintf(
-            "%s [%s] line %d: %s\n",
-            date('d/m H:i'),
-            basename($caller['file']),
-            $caller['line'],
-            $displayVar
-        );
-        $logFile = VAR_FOLDER . DS . 'logs' . DS . 'debug.log';
-        file_put_contents($logFile, $debug, $options['append'] ? FILE_APPEND : 0);
-        return;
+    if (!is_string($message)) {
+        $caller = debug_backtrace()[0];
+        $parts[] = sprintf("[%s:%d]", basename($caller['file']), $caller['line']);
     }
 
-    $wrap = ['<pre>', '</pre>'];
-    if (in_array(PHP_SAPI, ['cli', 'phpdbg'], true)) {
-        $wrap = ["\n\033[35m", "\033[0m\n"];
-    }
-
-    echo $wrap[0];
-    if (is_array($var) || is_object($var) || is_callable($var)) {
-        print_r($var);
+    if (is_string($message)) {
+        $message = !empty($vars) ? vsprintf($message, $vars) : $message;
+    } elseif ($message instanceof Builder) {
+        $message = $message->toSql();
     } else {
-        var_dump($var);
+        $message = var_export($message, true);
     }
-    echo $wrap[1];
+    $parts[] = $message;
+
+    container('logger')->log(LogLevel::Debug, implode(' ', $parts));
 }
 
 /**
- * Add a line into SQL logs file
+ * Récupère le temps écoulé depuis le lancement du script PHP,
+ * ou depuis un timestamp de départ personnalisé.
  *
- * @param Builder $builder The Eloquent Query builder.
+ * @param float $start Un timestamp de départ personnalisé.
  *
- * @return void
- *
- * @codeCoverageIgnore
- */
-function logSql(Builder $builder): void
-{
-    $logFile = VAR_FOLDER . DS . 'logs' . DS . 'sql.log';
-    file_put_contents($logFile, $builder->toSql() . "\n", FILE_APPEND);
-}
-
-/**
- * Get elapsed time since php script first launched, or a custom start microtime
- *
- * @param float $start A custom start microtime.
- *
- * @return string The elapsed time, in seconds.
+ * @return string Le temps écoulé, en secondes.
  */
 function getExecutionTime(?float $start = null): string
 {
-    $start       = $start ?: (float)$_SERVER['REQUEST_TIME_FLOAT'];
+    $start = $start ?: (float) $_SERVER['REQUEST_TIME_FLOAT'];
     $elapsedTime = microtime(true) - $start;
 
-    return number_format($elapsedTime, 3) . "s";
+    return number_format($elapsedTime, 3) . 's';
 }
 
 /**
- * Transform any snake_case string into camelCase string
+ * Pour utiliser une transaction de DB, qui rollback les requêtes SQL en cas d'exception.
  *
- * @param string $str                   The string to transform.
- * @param bool   $capitalizeFirstLetter Wether to capitalize the first letter or not.
+ * @param callable $callback Le code effectuant les opérations sur la base de données.
+ *                           (et donc qui seront rollback en cas d'erreur)
  *
- * @return string
+ * @return mixed Le retour de la fonction de callback.
  */
-function snakeToCamelCase(string $str, bool $capitalizeFirstLetter = false): string
+function dbTransaction(callable $callback): mixed
 {
-    $string = str_replace('_', '', ucwords($str, '_'));
+    $dbConnection = container('database')->getConnection();
 
-    if (!$capitalizeFirstLetter) {
-        return lcfirst($string);
+    try {
+        $dbConnection->beginTransaction();
+        $result = $callback();
+        $dbConnection->commit();
+    } catch (\Throwable $e) {
+        $dbConnection->rollBack();
+        throw $e;
     }
 
-    return $string;
+    return $result;
 }
 
 /**
- * Transforme une chaîne de caractère en snake_case.
+ * Traduit une clé de traduction pour la langue courante.
  *
- * @return string
+ * ATTENTION, cette fonction n'est à utiliser que dans de rares cas, il faut
+ * privilégier l'injection de dépendance quand c'est possible.
+ *
+ * @param string $key La clé de traduction à utiliser
+ *
+ * @return string - La traduction, ou la clé elle-même si non trouvée.
  */
-function snakeCase(string $value): string
+function __(string $key): string
 {
-    if (ctype_lower($value)) {
-        return $value;
-    }
-
-    $value = preg_replace('/\s+/u', '', ucwords($value));
-    $value = preg_replace('/(.)(?=[A-Z])/u', '$1_', $value);
-    return mb_strtolower($value, 'UTF-8');
+    return container('i18n')->translate($key);
 }
 
 /**
- * Transform any spaces (normal & unbreakable) in a string into underscores
+ * Retourne l'URL absolue d'une route nommée, en incluant le chemin de base.
  *
- * @param string $str The string to transform.
+ * /!\ Attention: Cette fonction est uniquement utilisable dans un contexte
+ *                d'application avec router (et donc pas dans les applications
+ *                console !!)
  *
- * @return string
+ * @param string                $routeName   Le nom de la route
+ * @param array<string, string> $data        Les arguments nommés de la route.
+ * @param array<string, string> $queryParams Paramètres de "query" éventuels.
+ *
+ * @return string L'URL absolue correspondante à la route.
+ *
+ * @throws RuntimeException  Si la route nommée n'existe pas.
+ * @throws LogicException Si nous ne sommes pas dans un context routé (cf. description).
+ * @throws InvalidArgumentException Si des données requises n'ont pas été fournies.
  */
-function slugify(string $str): string
+function urlFor(string $routeName, array $data = [], array $queryParams = []): string
 {
-    return preg_replace('/\s|\xc2\xa0/', '_', $str);
+    /** @var Container $container */
+    $container = container();
+
+    if (!$container->has(RouteParserInterface::class)) {
+        throw new \LogicException("`urlFor()` cannot be called in non-routed contexts.");
+    }
+
+    /** @var RouteParserInterface $routeParser */
+    $routeParser = $container->get(RouteParserInterface::class);
+    return $routeParser->fullUrlFor(Config::getBaseUri(), $routeName, $data, $queryParams);
 }
 
 /**
- * Set all empty fields of an array to null
+ * Pour modifier la limite de mémoire de PHP pendant l'exécution d'une partie du code.
  *
- * @param array $data The array to clean.
+ * @param string $limit La limite de mémoire (par exemple '256M' ou '1G') à appliquer
+ *                      pour exécuter le code fourni.
+ * @param callable $callback Le code à exécuter avec la modification temporaire
+ *                           de la limite de mémoire.
  *
- * @return array
+ * @return mixed Le retour de la fonction de callback.
  */
-function cleanEmptyFields(array $data): array
+function increaseMemory(string $limit, callable $callback): mixed
 {
-    return array_map(function ($value) {
-        return ($value === '') ? null : $value;
-    }, $data);
+    $defaultMemoryLimit = ini_get('memory_limit');
+    ini_set('memory_limit', $limit);
+
+    $result = $callback();
+
+    ini_set('memory_limit', $defaultMemoryLimit);
+
+    return $result;
 }
 
 /**
- * Permet de normaliser un numéro de téléphone.
+ * Permet de savoir si est actuellement dans un contexte
+ * d'execution en ligne de commandes.
  *
- * @param string $phone Le numéro de téléphone à normaliser.
- *
- * @return string Le numéro de téléphone normalisé.
+ * @return bool `true` si on est dans un contexte d'execution en
+ *              ligne de commandes, `false sinon`.
  */
-function normalizePhone(string $phone): string
+function isCli(): bool
 {
-    return preg_replace('/ /', '', $phone);
-}
-
-function alphanumericalize(string $string): string
-{
-    return (new Cocur\Slugify\Slugify())
-        ->slugify($string, ['separator' => '-']);
-}
-
-/**
- * Set all empty fields of an array to null
- *
- * @param QueryException $e The PDO Exception thrown
- *
- * @return bool
- */
-function isDuplicateException(QueryException $e): bool
-{
-    if ($e->getCode() != '23000') {
-        return false;
-    }
-
-    $details = $e->getMessage();
-    $subCode = explode(' ', explode(': ', $details)[2]);
-
-    return $subCode[0] == '1062';
-}
-
-function splitPeriods(array $slots): array
-{
-    $normalizeDate = function ($date, $defaultTime) {
-        if (!($date instanceof \DateTime)) {
-            $parsedTime = date_parse($date);
-            if (!$parsedTime || $parsedTime['error_count'] > 0) {
-                throw new \InvalidArgumentException(
-                    sprintf("La date \"%s\" est invalide.", $date)
-                );
-            }
-
-            $date = new \DateTime($date);
-            if ($parsedTime['hour'] === false) {
-                $timeParts = array_map('intval', explode(':', $defaultTime));
-                call_user_func_array([$date, 'setTime'], $timeParts);
-            }
-        }
-        return $date->format('Y-m-d H:i');
-    };
-
-    $timeLine = [];
-    foreach ($slots as $slot) {
-        $timeLine[] = $normalizeDate($slot['start_date'], '00:00');
-        $timeLine[] = $normalizeDate($slot['end_date'], '23:59');
-    }
-
-    $timeLine = array_unique($timeLine);
-    $timeLineCount = count($timeLine);
-    if ($timeLineCount < 2) {
-        return [];
-    }
-
-    usort($timeLine, function ($dateTime1, $dateTime2) {
-        if ($dateTime1 === $dateTime2) {
-            return 0;
-        }
-        return strtotime($dateTime1) < strtotime($dateTime2) ? -1 : 1;
-    });
-
-    $periods = [];
-    for ($i = 0; $i < $timeLineCount - 1; $i++) {
-        $periods[] = [$timeLine[$i], $timeLine[$i + 1]];
-    }
-
-    return $periods;
-}
-
-/**
- * Déplace un fichier uploaded dans le dossier des data en sécurisant son nom
- *
- * @param string                $directory    Dossier dans lequel placer le fichier (sera créé si inexistant)
- * @param UploadedFileInterface $uploadedFile Le fichier à placer
- *
- * @return string Le nom du fichier résultant.
- */
-function moveUploadedFile($directory, UploadedFileInterface $uploadedFile)
-{
-    $name = $uploadedFile->getClientFilename();
-
-    $slugify = new Cocur\Slugify\Slugify([
-        'regexp' => '/([^A-Za-z0-9\.]|-)+/',
-        'lowercase' => false,
-    ]);
-    $nameSecure = $slugify->slugify($name);
-
-    if (!is_dir($directory)) {
-        mkdir($directory, 0777, true);
-    }
-
-    $uploadedFile->moveTo($directory . DS . $nameSecure);
-
-    return $nameSecure;
-}
-
-/**
- * Arrondi un horaire (datetime) selon une précision en minutes donnée.
- *
- * @param DateTime  $originalDate   La date à arrondir
- * @param int       $precision      La précision à utiliser. Par défaut 15 minutes. Max 60 minutes.
- *
- * @return DateTime Un clone de la date originale arrondie.
- */
-function roundDate(\DateTime $originalDate, int $precision = 15): DateTime
-{
-    $date = clone($originalDate);
-    if ($precision > 60) {
-        return $date;
-    }
-
-    $steps = range(0, 60, $precision);
-
-    $minutes = (int)$originalDate->format('i');
-    if (in_array($minutes, $steps)) {
-        return $date;
-    }
-
-    $hours = (int)$originalDate->format('H');
-    $roundedMinutes = ((round($minutes / $precision)) * $precision) % 60;
-    $date->setTime($hours, $roundedMinutes);
-
-    $nextHourThreshold = 60 - ($precision / 2);
-    if ($minutes < $nextHourThreshold) {
-        return $date;
-    }
-
-    if ($hours === 23) {
-        $date->setTime(0, 0);
-        $date->add(new \DateInterval('P1D'));
-        return $date;
-    }
-
-    $date->setTime($hours + 1, 0);
-    return $date;
+    return strtolower(php_sapi_name()) === 'cli';
 }

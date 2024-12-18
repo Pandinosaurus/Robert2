@@ -1,0 +1,23 @@
+.EventDetailsMaterials {
+    $block: &;
+
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100vh - 250px);
+
+    &__missing {
+        margin-bottom: 20px;
+    }
+
+    &__list {
+        flex: 1;
+        overflow-y: auto;
+        margin-bottom: 20px;
+    }
+
+    &--with-sub-lists {
+        #{$block}__totals {
+            padding: 0 25px 0 10px;
+        }
+    }
+}

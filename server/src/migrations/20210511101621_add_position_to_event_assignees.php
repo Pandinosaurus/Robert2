@@ -1,9 +1,11 @@
 <?php
+declare(strict_types=1);
+
 use Phinx\Migration\AbstractMigration;
 
-class AddPositionToEventAssignees extends AbstractMigration
+final class AddPositionToEventAssignees extends AbstractMigration
 {
-    public function up()
+    public function up(): void
     {
         $table = $this->table('event_assignees');
         $table
@@ -11,7 +13,7 @@ class AddPositionToEventAssignees extends AbstractMigration
             ->save();
     }
 
-    public function down()
+    public function down(): void
     {
         $table = $this->table('event_assignees');
         $table

@@ -1,9 +1,11 @@
 <?php
+declare(strict_types=1);
+
 use Phinx\Migration\AbstractMigration;
 
-class AddReferenceToPersons extends AbstractMigration
+final class AddReferenceToPersons extends AbstractMigration
 {
-    public function up()
+    public function up(): void
     {
         $persons = $this->table('persons');
         $persons
@@ -19,7 +21,7 @@ class AddReferenceToPersons extends AbstractMigration
             ->update();
     }
 
-    public function down()
+    public function down(): void
     {
         $persons = $this->table('persons');
         $persons

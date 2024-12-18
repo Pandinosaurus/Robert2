@@ -1,9 +1,11 @@
 <?php
+declare(strict_types=1);
+
 use Phinx\Migration\AbstractMigration;
 
-class CreateSettings extends AbstractMigration
+final class CreateSettings extends AbstractMigration
 {
-    public function up()
+    public function up(): void
     {
         $table = $this->table('settings', ['id' => false, 'primary_key' => 'key']);
         $table
@@ -28,7 +30,7 @@ class CreateSettings extends AbstractMigration
         $this->table('settings')->insert($settingsData)->save();
     }
 
-    public function down()
+    public function down(): void
     {
         $this->table('settings')->drop()->save();
     }

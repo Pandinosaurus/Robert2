@@ -1,13 +1,16 @@
 <?php
+declare(strict_types=1);
+
 use Phinx\Migration\AbstractMigration;
 
-class AddOwnerToMaterialUnits extends AbstractMigration
+final class AddOwnerToMaterialUnits extends AbstractMigration
 {
-    public function up()
+    public function up(): void
     {
         $table = $this->table('material_units');
         $table
             ->addColumn('person_id', 'integer', [
+                'signed' => true,
                 'null' => true,
                 'after' => 'park_id',
             ])
@@ -20,7 +23,7 @@ class AddOwnerToMaterialUnits extends AbstractMigration
             ->save();
     }
 
-    public function down()
+    public function down(): void
     {
         $table = $this->table('material_units');
         $table

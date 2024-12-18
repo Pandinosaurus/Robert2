@@ -1,28 +1,65 @@
+import { z } from '@/utils/validation';
 import requester from '@/globals/requester';
+import { SubCategorySchema } from './subcategories';
 
-import type { PaginatedData, PaginationParams } from '@/stores/api/@types';
+import type { SchemaInfer } from '@/utils/validation';
+
+// ------------------------------------------------------
+// -
+// -    Schema / Enums
+// -
+// ------------------------------------------------------
+
+export const CategorySchema = z.object({
+    id: z.number(),
+    name: z.string(),
+});
+
+export const CategoryDetailsSchema = CategorySchema.extend({
+    sub_categories: z.lazy(() => SubCategorySchema.array()),
+});
+
+// ------------------------------------------------------
+// -
+// -    Types
+// -
+// ------------------------------------------------------
+
+export type Category = SchemaInfer<typeof CategorySchema>;
+
+export type CategoryDetails = SchemaInfer<typeof CategoryDetailsSchema>;
 
 //
-// - Types
+// - Edition
 //
 
-export type Category = {
-    id: number,
+export type CategoryEdit = {
     name: string,
 };
 
-type GetAllPaginated = PaginationParams & { paginated?: true };
-type GetAllRaw = { paginated: false };
+// ------------------------------------------------------
+// -
+// -    Fonctions
+// -
+// ------------------------------------------------------
 
-//
-// - Functions
-//
+const all = async (): Promise<CategoryDetails[]> => {
+    const response = await requester.get('/categories');
+    return CategoryDetailsSchema.array().parse(response.data);
+};
 
-async function all(params: GetAllRaw): Promise<Category[]>;
-async function all(params: GetAllPaginated): Promise<PaginatedData<Category[]>>;
-// eslint-disable-next-line func-style
-async function all(params: GetAllPaginated | GetAllRaw): Promise<unknown> {
-    return (await requester.get('categories', { params })).data;
-}
+const create = async (data: CategoryEdit): Promise<CategoryDetails> => {
+    const response = await requester.post('/categories', data);
+    return CategoryDetailsSchema.parse(response.data);
+};
 
-export default { all };
+const update = async (id: Category['id'], data: Partial<CategoryEdit>): Promise<CategoryDetails> => {
+    const response = await requester.put(`/categories/${id}`, data);
+    return CategoryDetailsSchema.parse(response.data);
+};
+
+const remove = async (id: Category['id']): Promise<void> => {
+    await requester.delete(`/categories/${id}`);
+};
+
+export default { all, create, update, remove };

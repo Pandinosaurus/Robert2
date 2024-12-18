@@ -1,196 +1,194 @@
 <?php
 declare(strict_types=1);
 
-namespace Robert2\Tests;
+namespace Loxya\Tests;
 
-use Robert2\API\Models\Attribute;
+use Illuminate\Support\Carbon;
+use Loxya\Models\Attribute;
+use Loxya\Models\Enums\AttributeEntity;
+use Loxya\Models\Enums\AttributeType;
 
-final class AttributeTest extends ModelTestCase
+final class AttributeTest extends TestCase
 {
-    public function setup(): void
+    public function testValidation(): void
     {
-        parent::setUp();
+        $testValidation = function (array $testData, array $expectedErrors): void {
+            $this->assertSame($expectedErrors, (new Attribute($testData))->validationErrors());
+        };
 
-        $this->model = new Attribute();
-    }
-
-    public function testTableName(): void
-    {
-        $this->assertEquals('attributes', $this->model->getTable());
-    }
-
-    public function testGetAll(): void
-    {
-        $result = $this->model->getAll()->get()->toArray();
-        $this->assertCount(5, $result);
-        $this->assertEquals([
-            [
-                'id' => 1,
-                'name' => "Poids",
-                'type' => "float",
-                'unit' => "kg",
-                'max_length' => null,
-                'categories' => [
-                    [
-                        'id' => 2,
-                        'name' => "light",
-                        'sub_categories' => [
-                            ['id' => 4, 'name' => 'dimmers', 'category_id' => 2],
-                            ['id' => 3, 'name' => 'projectors', 'category_id' => 2],
-                        ],
-                        'pivot' => ['attribute_id' => 1, 'category_id' => 2]
-                    ],
-                    [
-                        'id' => 1,
-                        'name' => "sound",
-                        'sub_categories' => [
-                            ['id' => 1, 'name' => 'mixers', 'category_id' => 1],
-                            ['id' => 2, 'name' => 'processors', 'category_id' => 1],
-                        ],
-                        'pivot' => ['attribute_id' => 1, 'category_id' => 1]
-                    ],
-                ],
-                'created_at' => null,
-                'updated_at' => null,
-                'deleted_at' => null,
+        // - Test `max_length`: Doit être à `null` si attribut autre que type `string`.
+        // - Test `unit`: Doit être à `null` si attribut autre que type `float` ou `integer`.
+        // - Test `is_totalisable`: Doit être à `null` si attribut autre que type `float` ou `integer`.
+        $testData = [
+            'id' => 6,
+            'name' => 'Testing',
+            'entities' => [
+                AttributeEntity::MATERIAL->value,
             ],
-            [
-                'id' => 2,
-                'name' => "Couleur",
-                'type' => "string",
-                'unit' => null,
-                'max_length' => null,
-                'categories' => [],
-                'created_at' => null,
-                'updated_at' => null,
-                'deleted_at' => null,
-            ],
-            [
-                'id' => 3,
-                'name' => "Puissance",
-                'type' => "integer",
-                'unit' => "W",
-                'max_length' => null,
-                'categories' => [
-                    [
-                        'id' => 1,
-                        'name' => "sound",
-                        'sub_categories' => [
-                            ['id' => 1, 'name' => 'mixers', 'category_id' => 1],
-                            ['id' => 2, 'name' => 'processors', 'category_id' => 1],
-                        ],
-                        'pivot' => ['attribute_id' => 3, 'category_id' => 1]
-                    ],
-                ],
-                'created_at' => null,
-                'updated_at' => null,
-                'deleted_at' => null,
-            ],
-            [
-                'id' => 4,
-                'name' => "Conforme",
-                'type' => "boolean",
-                'unit' => null,
-                'max_length' => null,
-                'categories' => [],
-                'created_at' => null,
-                'updated_at' => null,
-                'deleted_at' => null,
-            ],
-            [
-                'id' => 5,
-                'name' => "Date d'achat",
-                'type' => "date",
-                'unit' => null,
-                'max_length' => null,
-                'categories' => [],
-                'created_at' => null,
-                'updated_at' => null,
-                'deleted_at' => null,
-            ],
-        ], $result);
-    }
-
-    public function testGetMaterials(): void
-    {
-        $Event = Attribute::find(4);
-        $results = $Event->materials;
-        $expected = [
-            [
-                'id' => 4,
-                'name' => 'Showtec SDS-6',
-                'tags' => [],
-                'attributes' => [
-                    [
-                        'id' => 4,
-                        'name' => 'Conforme',
-                        'type' => 'boolean',
-                        'unit' => null,
-                        'value' => true,
-                    ],
-                    [
-                        'id' => 3,
-                        'name' => 'Puissance',
-                        'type' => 'integer',
-                        'unit' => 'W',
-                        'value' => 60,
-                    ],
-                    [
-                        'id' => 1,
-                        'name' => 'Poids',
-                        'type' => 'float',
-                        'unit' => 'kg',
-                        'value' => 3.15,
-                    ],
-                ],
-                'pivot' => [
-                    'attribute_id' => 4,
-                    'material_id' => 4,
-                    'value' => 'true',
-                ],
-            ],
+            'type' => AttributeType::DATE->value,
+            'unit' => 'kg',
+            'max_length' => 100,
+            'is_totalisable' => false,
         ];
-        $this->assertEquals($expected, $results);
+        $testValidation($testData, [
+            'unit' => "Ce champ ne devrait pas être spécifié.",
+            'max_length' => "Ce champ ne devrait pas être spécifié.",
+            'is_totalisable' => "Ce champ ne devrait pas être spécifié.",
+        ]);
+
+        // - Si `max_length`, `unit` et `is_totalisable` sont à `null` pour les
+        //   attributs autres (cf. commentaire au dessus) => Pas d'erreur.
+        $testData = array_replace($testData, array_fill_keys(['unit', 'max_length', 'is_totalisable'], null));
+        (new Attribute($testData))->validate();
+
+        // - Test `max_length`: Vérification "normale" si attribut de type `string`.
+        $testData = [
+            'id' => 6,
+            'name' => 'Testing',
+            'entities' => [AttributeEntity::MATERIAL->value],
+            'type' => AttributeType::STRING->value,
+            'max_length' => 'NOT_A_NUMBER',
+        ];
+        $testValidation($testData, [
+            'max_length' => "Ce champ doit contenir un nombre entier.",
+        ]);
+
+        // - Test `max_length`: Si valide pour les attributs de type `string` => Pas d'erreur.
+        $testData = array_replace($testData, ['max_length' => 100]);
+        (new Attribute($testData))->validate();
+
+        // - Test `unit`: Vérification "normale" si attribut de type `float` ou `integer`.
+        $baseTestData = [
+            'id' => 6,
+            'name' => 'Testing',
+            'entities' => [AttributeEntity::MATERIAL->value],
+            'unit' => 'TROP_LOOOOOOOOOOOOOONG',
+            'is_totalisable' => true,
+        ];
+        $numericTypes = [
+            AttributeType::INTEGER->value,
+            AttributeType::FLOAT->value,
+        ];
+        foreach ($numericTypes as $type) {
+            $testData = array_replace($baseTestData, compact('type'));
+            $testValidation($testData, [
+                'unit' => "1 caractères min., 8 caractères max.",
+            ]);
+        }
+
+        // - Test `unit`: si valide pour les attributs de type `float` ou `integer` => Pas d'erreur.
+        foreach ($numericTypes as $type) {
+            $testData = array_replace($baseTestData, compact('type'), ['unit' => 'kg']);
+            (new Attribute($testData))->validate();
+        }
+
+        // - Test `is_totalisable`: Vérification "normale" si attribut de type `float` ou `integer`.
+        $baseTestData = [
+            'id' => 6,
+            'name' => 'Testing',
+            'entities' => [AttributeEntity::MATERIAL->value],
+            'unit' => 'cm',
+            'is_totalisable' => 'not-a-boolean',
+        ];
+        foreach ($numericTypes as $type) {
+            $testData = array_replace($baseTestData, compact('type'));
+            $testValidation($testData, [
+                'is_totalisable' => "Ce champ doit être un booléen.",
+            ]);
+        }
+
+        // - Test `is_totalisable`: si valide pour les attributs de type `float` ou `integer` => Pas d'erreur.
+        foreach ($numericTypes as $type) {
+            $testData = array_replace($baseTestData, compact('type'), ['is_totalisable' => true]);
+            (new Attribute($testData))->validate();
+        }
+
+        // - Tests `entities`: doit être un sous-ensemble des valeurs possibles.
+        $baseTestData = [
+            'id' => 6,
+            'name' => 'Testing',
+            'type' => AttributeType::STRING->value,
+        ];
+        $invalidSets = [
+            '',
+            [],
+            null,
+            ['not-recognized'],
+            ['material', 'not-recognized'],
+            ['material', 'material-unit', 'not-recognized'],
+        ];
+        foreach ($invalidSets as $invalidSet) {
+            $testData = array_replace($baseTestData, ['entities' => $invalidSet]);
+            $testValidation($testData, [
+                'entities' => "Ce champ est invalide.",
+            ]);
+        }
+
+        // - Test avec des valeurs et sous-ensembles valides.
+        $validValues = [
+            [AttributeEntity::MATERIAL->value],
+        ];
+        foreach ($validValues as $validValue) {
+            $testData = array_replace($baseTestData, ['entities' => $validValue]);
+            (new Attribute($testData))->validationErrors();
+        }
+    }
+
+    public function testNew(): void
+    {
+        Carbon::setTestNow(Carbon::create(2024, 11, 20, 13, 30, 0));
+
+        // - Crée une caractéristique spéciale
+        $result = Attribute::new([
+            'name' => 'Testing',
+            'entities' => [AttributeEntity::MATERIAL->value],
+            'type' => AttributeType::DATE->value,
+        ]);
+        $expected = [
+            'id' => 9,
+            'name' => 'Testing',
+            'entities' => [AttributeEntity::MATERIAL->value],
+            'type' => AttributeType::DATE->value,
+            'unit' => null,
+            'max_length' => null,
+            'is_totalisable' => null,
+            'created_at' => '2024-11-20 13:30:00',
+            'updated_at' => '2024-11-20 13:30:00',
+        ];
+        $this->assertEquals($expected, $result->toArray());
     }
 
     public function testEdit(): void
     {
-        // - Crée une caractéristique spéciale
-        $result = $this->model->edit(null, ['name' => 'Testing', 'type' => 'date']);
-        $expected = [
-            'id' => 6,
-            'name' => 'Testing',
-            'type' => 'date',
-            'unit' => null,
-            'max_length' => null,
-        ];
-        unset($result->created_at, $result->updated_at, $result->deleted_at);
-        $this->assertEquals($expected, $result->toArray());
-
         // - Modifie une caractéristique spéciale
-        $result = $this->model->edit(1, [
+        $result = Attribute::findOrFail(1)->edit([
             'name' => 'Masse',
-            'type' => 'integer',
+            'entities' => [
+                AttributeEntity::MATERIAL->value,
+            ],
+            'type' => AttributeType::INTEGER->value,
             'unit' => 'g',
-            'max_length' => 10,
+            'categories' => [3, 4],
+            'is_totalisable' => false,
         ]);
-        // - Uniquement le nom a été modifié
-        $expected = [
-            'id' => 1,
-            'name' => 'Masse',
-            'type' => 'float',
-            'unit' => 'kg',
-            'max_length' => null,
-        ];
-        unset($result->created_at, $result->updated_at, $result->deleted_at);
-        $this->assertEquals($expected, $result->toArray());
-    }
 
-    public function testRemove(): void
-    {
-        // - Supprime une caractéristique spéciale
-        $this->model->remove(3);
-        // - Vérifie qu'elle a bien été supprimée
-        $this->assertEmpty(Attribute::find(3));
+        // - Le type ne doit pas avoir changé
+        $this->assertNotEquals(AttributeType::INTEGER->value, $result->type);
+
+        // - Mais tout le reste doit avoir été mis à jour
+        $this->assertSame(
+            [
+                AttributeEntity::MATERIAL->value,
+            ],
+            $result->entities,
+        );
+        $this->assertEquals('Masse', $result->name);
+        $this->assertEquals('g', $result->unit);
+        $this->assertFalse($result->is_totalisable);
+        $this->assertEquals([4, 3], (
+            $result->categories
+                ->map(static fn ($category) => $category->id)
+                ->toArray()
+        ));
     }
 }

@@ -1,410 +1,390 @@
 <?php
-namespace Robert2\Tests;
+declare(strict_types=1);
+
+namespace Loxya\Tests;
+
+use Fig\Http\Message\StatusCodeInterface as StatusCode;
+use Illuminate\Support\Collection;
+use Loxya\Models\Enums\BookingViewMode;
+use Loxya\Models\Enums\Group;
+use Loxya\Models\User;
+use Loxya\Support\Arr;
 
 final class UsersTest extends ApiTestCase
 {
-    public function testGetUsers()
+    public static function data(?int $id = null, string $format = User::SERIALIZE_DEFAULT)
     {
-        $this->client->get('/api/users');
-        $this->assertStatusCode(SUCCESS_OK);
-        $this->assertResponseData([
-            'pagination' => [
-                'current_page' => 1,
-                'from' => 1,
-                'last_page' => 1,
-                'path' => '/api/users',
-                'first_page_url' => '/api/users?page=1',
-                'next_page_url' => null,
-                'prev_page_url' => null,
-                'last_page_url' => '/api/users?page=1',
-                'per_page' => $this->settings['maxItemsPerPage'],
-                'to' => 3,
-                'total' => 3,
-            ],
-            'data' => [
-                [
-                    'id' => 3,
-                    'pseudo' => 'nobody',
-                    'email' => 'nobody@robertmanager.net',
-                    'group_id' => 'member',
-                    'created_at' => null,
-                    'updated_at' => null,
-                    'deleted_at' => null,
-                    'person' => null,
-                ],
-                [
-                    'id' => 1,
-                    'pseudo' => 'test1',
-                    'email' => 'tester@robertmanager.net',
-                    'group_id' => 'admin',
-                    'created_at' => null,
-                    'updated_at' => null,
-                    'deleted_at' => null,
-                    'person' => [
-                        'id' => 1,
-                        'user_id' => 1,
-                        'first_name' => 'Jean',
-                        'last_name' => 'Fountain',
-                        'full_name' => 'Jean Fountain',
-                        'reference' => '0001',
-                        'nickname' => null,
-                        'email' => 'tester@robertmanager.net',
-                        'phone' => null,
-                        'street' => '1, somewhere av.',
-                        'postal_code' => '1234',
-                        'locality' => 'Megacity',
-                        'country_id' => 1,
-                        'company_id' => 1,
-                        'note' => null,
-                        'created_at' => null,
-                        'updated_at' => null,
-                        'deleted_at' => null,
-                        'company' => [
-                            'id' => 1,
-                            'legal_name' => 'Testing, Inc',
-                            'street' => '1, company st.',
-                            'postal_code' => '1234',
-                            'locality' => 'Megacity',
-                            'country_id' => 1,
-                            'phone' => '+4123456789',
-                            'note' => 'Just for tests',
-                            'created_at' => null,
-                            'updated_at' => null,
-                            'deleted_at' => null,
-                            'country' => [
-                                'id' => 1,
-                                'name' => 'France',
-                                'code' => 'FR',
-                            ],
-                        ],
-                        'country' => [
-                            'id' => 1,
-                            'name' => 'France',
-                            'code' => 'FR',
-                        ],
-                    ],
-                ],
-                [
-                    'id' => 2,
-                    'pseudo' => 'test2',
-                    'email' => 'tester2@robertmanager.net',
-                    'group_id' => 'member',
-                    'created_at' => null,
-                    'updated_at' => null,
-                    'deleted_at' => null,
-                    'person' => [
-                        'id' => 2,
-                        'user_id' => 2,
-                        'first_name' => 'Roger',
-                        'last_name' => 'Rabbit',
-                        'full_name' => 'Roger Rabbit',
-                        'reference' => '0002',
-                        'nickname' => 'Riri',
-                        'email' => 'tester2@robertmanager.net',
-                        'phone' => null,
-                        'street' => null,
-                        'postal_code' => null,
-                        'locality' => null,
-                        'country_id' => null,
-                        'company_id' => null,
-                        'note' => null,
-                        'created_at' => null,
-                        'updated_at' => null,
-                        'deleted_at' => null,
-                        'company' => null,
-                        'country' => null,
-                    ],
-                ],
-            ],
-        ]);
-
-        $this->client->get('/api/users?deleted=1');
-        $this->assertStatusCode(SUCCESS_OK);
-        $this->assertResponsePaginatedData(0, '/api/users', 'deleted=1');
-    }
-
-    public function testGetUserNotFound()
-    {
-        $this->client->get('/api/users/9999');
-        $this->assertNotFound();
-    }
-
-    public function testGetUser()
-    {
-        $this->client->get('/api/users/1');
-        $this->assertStatusCode(SUCCESS_OK);
-        $this->assertResponseData([
-            'id' => 1,
-            'pseudo' => 'test1',
-            'email' => 'tester@robertmanager.net',
-            'group_id' => 'admin',
-            'cas_identifier' => null,
-            'created_at' => null,
-            'updated_at' => null,
-            'deleted_at' => null,
-            'person' => [
+        $users = (new Collection([
+            [
                 'id' => 1,
-                'user_id' => 1,
+                'pseudo' => 'test1',
                 'first_name' => 'Jean',
                 'last_name' => 'Fountain',
                 'full_name' => 'Jean Fountain',
-                'reference' => '0001',
-                'nickname' => null,
-                'email' => 'tester@robertmanager.net',
                 'phone' => null,
-                'street' => '1, somewhere av.',
+                'street' => "1, somewhere av.",
                 'postal_code' => '1234',
-                'locality' => 'Megacity',
+                'locality' => "Megacity",
                 'country_id' => 1,
-                'company_id' => 1,
-                'note' => null,
-                'created_at' => null,
-                'updated_at' => null,
-                'deleted_at' => null,
-                'company' => [
-                    'id' => 1,
-                    'legal_name' => 'Testing, Inc',
-                    'street' => '1, company st.',
-                    'postal_code' => '1234',
-                    'locality' => 'Megacity',
-                    'country_id' => 1,
-                    'phone' => '+4123456789',
-                    'note' => 'Just for tests',
-                    'created_at' => null,
-                    'updated_at' => null,
-                    'deleted_at' => null,
-                    'country' => [
-                        'id' => 1,
-                        'name' => 'France',
-                        'code' => 'FR',
-                    ],
-                ],
-                'country' => [
-                    'id' => 1,
-                    'name' => 'France',
-                    'code' => 'FR',
-                ],
+                'country' => CountriesTest::data(1),
+                'full_address' => "1, somewhere av.\n1234 Megacity",
+                'email' => 'tester@robertmanager.net',
+                'group' => Group::ADMINISTRATION,
+                'language' => 'en',
+                'default_bookings_view' => BookingViewMode::CALENDAR->value,
             ],
-        ]);
-    }
-
-    public function testGetUserSettingsNotFound()
-    {
-        $this->client->get('/api/users/9999/settings');
-        $this->assertNotFound();
-    }
-
-    public function testGetUserSettingsNoSettingFound()
-    {
-        $this->client->get('/api/users/3/settings');
-        $this->assertNotFound();
-    }
-
-    public function testGetUserSettings()
-    {
-        $this->client->get('/api/users/1/settings');
-        $this->assertStatusCode(SUCCESS_OK);
-        $this->assertResponseData([
-            'id' => 1,
-            'user_id' => 1,
-            'language' => 'EN',
-            'auth_token_validity_duration' => 12,
-            'created_at' => null,
-            'updated_at' => null,
-        ]);
-    }
-
-    public function testSetUserSettingsNoData()
-    {
-        $this->client->put('/api/users/1/settings', []);
-        $this->assertStatusCode(ERROR_VALIDATION);
-        $this->assertErrorMessage("Missing request data to process validation");
-    }
-
-    public function testSetUserSettingsNoUser()
-    {
-        $this->client->put('/api/users/999/settings', ['language' => 'FR']);
-        $this->assertNotFound();
-    }
-
-    public function testSetUserSettings()
-    {
-        $this->client->put('/api/users/1/settings', [
-            'language' => 'FR',
-            'auth_token_validity_duration' => 72,
-        ]);
-        $this->assertStatusCode(SUCCESS_OK);
-        $response = $this->_getResponseAsArray();
-        $this->assertEquals('FR', $response['language']);
-        $this->assertEquals(72, $response['auth_token_validity_duration']);
-    }
-
-    public function testUserSignupBadData()
-    {
-        $this->client->post('/api/users/signup', [
-            'email' => '',
-            'person' => [
-                'first_name' => '',
-                'last_name' => '',
-            ],
-        ]);
-        $this->assertStatusCode(ERROR_VALIDATION);
-        $this->assertValidationErrorMessage();
-        $this->assertErrorDetails([
-            'pseudo' => [
-                "pseudo must not be empty",
-                "pseudo must contain only letters (a-z), digits (0-9) and \"-\"",
-                "pseudo must have a length between 4 and 100",
-            ],
-            'email' => [
-                "email must not be empty",
-                "email must be valid email",
-                "email must have a length between 5 and 191",
-            ],
-            'group_id' => [
-                "group_id must not be empty",
-                "At least one of these rules must pass for group_id",
-                'group_id must be equals "admin"',
-                'group_id must be equals "member"',
-                'group_id must be equals "visitor"',
-            ],
-            'password' => [
-                "password must not be empty",
-                "password must have a length between 4 and 191",
-            ],
-        ]);
-    }
-
-    public function testUserSignup()
-    {
-        $this->client->post('/api/users/signup', [
-            'email' => 'nobody@test.org',
-            'pseudo' => 'signupTest',
-            'password' => 'signupTest',
-            'group_id' => 'member',
-            'person' => [
-                'first_name' => 'Nobody',
-                'last_name' => 'Testeur',
-            ],
-        ]);
-        $this->assertStatusCode(SUCCESS_CREATED);
-        $response = $this->_getResponseAsArray();
-        unset($response['created_at']);
-        unset($response['updated_at']);
-        unset($response['deleted_at']);
-        unset($response['person']['created_at']);
-        unset($response['person']['updated_at']);
-        $this->assertEquals([
-            'id' => 4,
-            'email' => 'nobody@test.org',
-            'pseudo' => 'signupTest',
-            'group_id' => 'member',
-            'cas_identifier' => null,
-            'person' => [
-                'id' => 4,
-                'first_name' => 'Nobody',
-                'last_name' => 'Testeur',
-                'full_name' => 'Nobody Testeur',
-                'reference' => null,
-                'user_id' => 4,
-                'nickname' => null,
-                'email' => null,
+            [
+                'id' => 2,
+                'pseudo' => 'test2',
+                'first_name' => 'Roger',
+                'last_name' => 'Rabbit',
+                'full_name' => 'Roger Rabbit',
                 'phone' => null,
                 'street' => null,
                 'postal_code' => null,
                 'locality' => null,
                 'country_id' => null,
-                'company_id' => null,
-                'note' => null,
-                'deleted_at' => null,
-                'company' => null,
                 'country' => null,
+                'full_address' => null,
+                'email' => 'tester2@robertmanager.net',
+                'group' => Group::MANAGEMENT,
+                'language' => 'fr',
+                'default_bookings_view' => BookingViewMode::CALENDAR->value,
             ],
-        ], $response);
+            [
+                'id' => 3,
+                'pseudo' => 'aldup',
+                'first_name' => 'Alexandre',
+                'last_name' => 'Dupont',
+                'full_name' => 'Alexandre Dupont',
+                'phone' => '+33678901234',
+                'street' => "15 Rue de l'Église",
+                'postal_code' => '75001',
+                'locality' => 'Paris',
+                'country_id' => 1,
+                'country' => CountriesTest::data(1),
+                'full_address' => "15 Rue de l'Église\n75001 Paris",
+                'email' => 'alex.dupont@example.com',
+                'group' => Group::MANAGEMENT,
+                'language' => 'fr',
+                'default_bookings_view' => BookingViewMode::LISTING->value,
+            ],
+            [
+                'id' => 4,
+                'pseudo' => 'TheVisitor',
+                'first_name' => 'Henry',
+                'last_name' => 'Berluc',
+                'full_name' => 'Henry Berluc',
+                'phone' => '+33724000000',
+                'street' => null,
+                'postal_code' => null,
+                'locality' => null,
+                'country_id' => 2,
+                'country' => CountriesTest::data(2),
+                'full_address' => null,
+                'email' => 'visitor@robertmanager.net',
+                'group' => Group::READONLY_PLANNING_GENERAL,
+                'language' => 'fr',
+                'default_bookings_view' => BookingViewMode::CALENDAR->value,
+            ],
+            [
+                'id' => 5,
+                'pseudo' => 'caroline',
+                'first_name' => 'Caroline',
+                'last_name' => 'Farol',
+                'full_name' => 'Caroline Farol',
+                'phone' => '+33786325500',
+                'street' => null,
+                'postal_code' => null,
+                'locality' => null,
+                'country_id' => null,
+                'country' => null,
+                'full_address' => null,
+                'email' => 'external@robertmanager.net',
+                'group' => Group::READONLY_PLANNING_GENERAL,
+                'language' => 'en',
+                'default_bookings_view' => BookingViewMode::CALENDAR->value,
+            ],
+        ]))->keyBy('id');
+
+        $users = match ($format) {
+            User::SERIALIZE_SETTINGS => $users->map(static fn ($user) => (
+                Arr::only($user, User::SETTINGS_ATTRIBUTES)
+            )),
+            User::SERIALIZE_SUMMARY => $users->map(static fn ($user) => (
+                Arr::only($user, ['id', 'full_name', 'email'])
+            )),
+            User::SERIALIZE_DEFAULT => $users->map(static fn ($user) => (
+                Arr::except($user, [
+                    ...User::SETTINGS_ATTRIBUTES,
+                    'street',
+                    'postal_code',
+                    'locality',
+                    'country_id',
+                    'country',
+                    'full_address',
+                ])
+            )),
+            User::SERIALIZE_DETAILS => $users->map(static fn ($user) => (
+                Arr::except($user, User::SETTINGS_ATTRIBUTES)
+            )),
+            User::SERIALIZE_SESSION => $users,
+            default => throw new \InvalidArgumentException(sprintf("Unknown format \"%s\"", $format)),
+        };
+
+        return $id !== null
+            ? $users->get($id)
+            : $users->values()->all();
     }
 
-    public function testCreateUser()
+    public function testGetAll(): void
     {
-        $this->client->post('/api/users/signup', [
-            'pseudo' => 'New User',
-            'email' => 'test@testing.org',
-            'password' => 'test',
-            'group_id' => 'member',
+        // - Test simple.
+        $this->client->get('/api/users');
+        $this->assertStatusCode(StatusCode::STATUS_OK);
+        $this->assertResponsePaginatedData(5, [
+            self::data(3),
+            self::data(5),
+            self::data(1),
+            self::data(2),
+            self::data(4),
         ]);
-        $this->assertStatusCode(SUCCESS_CREATED);
-        $this->assertResponseData([
-            'id' => 4,
-            'pseudo' => 'New User',
-            'email' => 'test@testing.org',
-            'group_id' => 'member',
-            'cas_identifier' => null,
-            'created_at' => 'fakedTestContent',
-            'updated_at' => 'fakedTestContent',
-            'deleted_at' => null,
-            'person' => null,
-        ], ['created_at', 'updated_at']);
+
+        // - Test de récupération des enregistrements supprimés.
+        $this->client->get('/api/users?deleted=1');
+        $this->assertStatusCode(StatusCode::STATUS_OK);
+        $this->assertResponsePaginatedData(0);
+
+        // - Test de récupération des membres d'un groupe en particulier.
+        $this->client->get(sprintf('/api/users?group=%s', Group::MANAGEMENT));
+        $this->assertStatusCode(StatusCode::STATUS_OK);
+        $this->assertResponsePaginatedData(2, [
+            self::data(3),
+            self::data(2),
+        ]);
     }
 
-    public function testUpdateCategoryNoData()
+    public function testGetOne(): void
     {
-        $this->client->put('/api/users/1', []);
-        $this->assertStatusCode(ERROR_VALIDATION);
-        $this->assertErrorMessage("Missing request data to process validation");
+        // - Avec un utilisateur inexistant.
+        $this->client->get('/api/users/9999');
+        $this->assertStatusCode(StatusCode::STATUS_NOT_FOUND);
+
+        // - Avec une récupération de soi-même => Interdit via cet endpoint.
+        $this->client->get('/api/users/1');
+        $this->assertStatusCode(StatusCode::STATUS_FORBIDDEN);
+
+        // - Avec le mot clé spécial `self` pour soi-même.
+        $this->client->get('/api/users/self');
+        $this->assertStatusCode(StatusCode::STATUS_OK);
+        $this->assertResponseData(self::data(1, User::SERIALIZE_DETAILS));
     }
 
-    public function testUpdateUserNotFound()
+    public function testGetOneSettings(): void
+    {
+        // - Avec un utilisateur inexistant.
+        $this->client->get('/api/users/9999/settings');
+        $this->assertStatusCode(StatusCode::STATUS_NOT_FOUND);
+
+        // - Avec une récupération de soi-même => Interdit via cet endpoint.
+        $this->client->get('/api/users/1/settings');
+        $this->assertStatusCode(StatusCode::STATUS_FORBIDDEN);
+
+        // - Avec le mot clé spécial `self` pour soi-même.
+        $this->client->get('/api/users/self/settings');
+        $this->assertStatusCode(StatusCode::STATUS_OK);
+        $this->assertResponseData(self::data(1, User::SERIALIZE_SETTINGS));
+
+        // - Test valide.
+        $this->client->get('/api/users/2/settings');
+        $this->assertStatusCode(StatusCode::STATUS_OK);
+        $this->assertResponseData(self::data(2, User::SERIALIZE_SETTINGS));
+    }
+
+    public function testUpdateSettings(): void
+    {
+        // - Test sans données.
+        $this->client->put('/api/users/2/settings', []);
+        $this->assertStatusCode(StatusCode::STATUS_BAD_REQUEST);
+        $this->assertApiErrorMessage("No data was provided.");
+
+        // - Test avec un utilisateur inexistant.
+        $this->client->put('/api/users/999/settings', ['language' => 'fr']);
+        $this->assertStatusCode(StatusCode::STATUS_NOT_FOUND);
+
+        // - Avec une récupération de soi-même => Interdit via cet endpoint.
+        $this->client->put('/api/users/1/settings', ['language' => 'fr']);
+        $this->assertStatusCode(StatusCode::STATUS_FORBIDDEN);
+
+        // - Test valide.
+        $this->client->put('/api/users/2/settings', [
+            'language' => 'fr',
+            'default_bookings_view' => BookingViewMode::CALENDAR->value,
+        ]);
+        $this->assertStatusCode(StatusCode::STATUS_OK);
+        $this->assertResponseData([
+            'language' => 'fr',
+            'default_bookings_view' => BookingViewMode::CALENDAR->value,
+        ]);
+
+        // - Avec le mot clé spécial `self` pour soi-même.
+        $this->client->put('/api/users/self/settings', [
+            'language' => 'en',
+            'default_bookings_view' => BookingViewMode::LISTING->value,
+        ]);
+        $this->assertStatusCode(StatusCode::STATUS_OK);
+        $this->assertResponseData([
+            'language' => 'en',
+            'default_bookings_view' => BookingViewMode::LISTING->value,
+        ]);
+    }
+
+    public function testCreateBadData(): void
+    {
+        $this->client->post('/api/users', [
+            'email' => 'not-an-email',
+            'first_name' => '',
+            'last_name' => '',
+            'group' => 'invalid',
+        ]);
+        $this->assertApiValidationError([
+            'pseudo' => "This field is mandatory.",
+            'email' => "This email address is invalid.",
+            'group' => "This field is invalid.",
+            'password' => "This field is mandatory.",
+            'first_name' => "This field is mandatory.",
+            'last_name' => "This field is mandatory.",
+        ]);
+    }
+
+    public function testCreateDuplicate(): void
+    {
+        $this->client->post('/api/users', [
+            'pseudo' => 'test1',
+            'first_name' => 'Nouveau',
+            'last_name' => 'Testeur',
+            'email' => 'tester@robertmanager.net',
+            'password' => 'test-dupe',
+            'group' => Group::MANAGEMENT,
+        ]);
+        $this->assertApiValidationError([
+            'pseudo' => "This pseudo is already in use.",
+            'email' => "This email is already in use.",
+        ]);
+    }
+
+    public function testCreate(): void
+    {
+        $this->client->post('/api/users', [
+            'email' => 'someone@test.org',
+            'pseudo' => 'Jeanne',
+            'first_name' => 'Jeanne',
+            'last_name' => 'Testeur',
+            'password' => 'my-ultim4te-paßwor!',
+            'group' => Group::MANAGEMENT,
+        ]);
+        $this->assertStatusCode(StatusCode::STATUS_CREATED);
+        $this->assertResponseData([
+            'id' => 6,
+            'first_name' => 'Jeanne',
+            'last_name' => 'Testeur',
+            'full_name' => 'Jeanne Testeur',
+            'email' => 'someone@test.org',
+            'pseudo' => 'Jeanne',
+            'phone' => null,
+            'street' => null,
+            'postal_code' => null,
+            'locality' => null,
+            'country' => null,
+            'country_id' => null,
+            'full_address' => null,
+            'group' => Group::MANAGEMENT,
+        ]);
+    }
+
+    public function testUpdateNoData(): void
+    {
+        $this->client->put('/api/users/2', []);
+        $this->assertStatusCode(StatusCode::STATUS_BAD_REQUEST);
+        $this->assertApiErrorMessage("No data was provided.");
+    }
+
+    public function testUpdateNotFound(): void
     {
         $this->client->put('/api/users/999', ['pseudo' => '__inexistant__']);
-        $this->assertNotFound();
+        $this->assertStatusCode(StatusCode::STATUS_NOT_FOUND);
     }
 
-    public function testUpdateUser()
+    public function testForbidUpdateSelfWithId(): void
     {
-        $this->client->put('/api/users/3', [
+        $this->client->put('/api/users/1', ['pseudo' => 'Admin']);
+        $this->assertStatusCode(StatusCode::STATUS_FORBIDDEN);
+    }
+
+    public function testUpdate(): void
+    {
+        // - L'utilisateur lui-même
+        $updatedData = ['pseudo' => 'Admin'];
+        $this->client->put('/api/users/self', $updatedData);
+        $this->assertStatusCode(StatusCode::STATUS_OK);
+        $this->assertResponseData(array_replace(
+            self::data(1, User::SERIALIZE_DETAILS),
+            $updatedData,
+        ));
+
+        // - Un autre utilisateur (en tant qu'admin)
+        $updatedData = [
             'pseudo' => 'userEdited',
-            'person' => [
-                'first_name' => 'Edited',
-                'last_name' => 'Tester',
-            ],
-        ]);
-        $this->assertStatusCode(SUCCESS_OK);
-        $response = $this->_getResponseAsArray();
-        $this->assertEquals('userEdited', $response['pseudo']);
-        $this->assertEquals(3, $response['person']['user_id']);
-        $this->assertEquals('Edited', $response['person']['first_name']);
-        $this->assertEquals('Tester', $response['person']['last_name']);
+            'first_name' => 'Edited',
+            'last_name' => 'Tester',
+            'full_name' => 'Edited Tester',
+            'group' => Group::ADMINISTRATION,
+        ];
+        $this->client->put('/api/users/3', $updatedData);
+        $this->assertStatusCode(StatusCode::STATUS_OK);
+        $this->assertResponseData(array_replace(
+            self::data(3, User::SERIALIZE_DETAILS),
+            $updatedData,
+        ));
     }
 
-    public function testDeleteAndDestroyUser()
+    public function testDeleteAndDestroy(): void
     {
-        // - First call : sets `deleted_at` not null
+        // - First call: soft delete.
         $this->client->delete('/api/users/3');
-        $this->assertStatusCode(SUCCESS_OK);
-        $response = $this->_getResponseAsArray();
-        $this->assertNotEmpty($response['deleted_at']);
+        $this->assertStatusCode(StatusCode::STATUS_NO_CONTENT);
+        $softDeleted = User::withTrashed()->find(3);
+        $this->assertNotNull($softDeleted);
+        $this->assertNotEmpty($softDeleted->deleted_at);
 
-        // - Second call : actually DESTROY record from DB
+        // - Second call: actually DESTROY record from DB
         $this->client->delete('/api/users/3');
-        $this->assertStatusCode(SUCCESS_OK);
-        $this->assertResponseData(['destroyed' => true]);
+        $this->assertStatusCode(StatusCode::STATUS_NO_CONTENT);
+        $this->assertNull(User::withTrashed()->find(3));
+
+        // - Test de suppression d'un utilisateur qui a un bénéficiaire lié
+        $this->client->delete('/api/users/2');
+        $this->assertStatusCode(StatusCode::STATUS_NO_CONTENT);
+        $user = User::withTrashed()->find(2);
+        $this->assertNotNull($user);
+        $this->assertNotEmpty($user->deleted_at);
     }
 
-    public function testRestoreUserNotFound()
+    public function testRestoreNotFound(): void
     {
         $this->client->put('/api/users/restore/999');
-        $this->assertNotFound();
+        $this->assertStatusCode(StatusCode::STATUS_NOT_FOUND);
     }
 
-    public function testRestoreUser()
+    public function testRestore(): void
     {
         // - First, delete user #2
         $this->client->delete('/api/users/2');
-        $this->assertStatusCode(SUCCESS_OK);
+        $this->assertStatusCode(StatusCode::STATUS_NO_CONTENT);
 
         // - Then, restore user #2
         $this->client->put('/api/users/restore/2');
-        $this->assertStatusCode(SUCCESS_OK);
-        $response = $this->_getResponseAsArray();
-        $this->assertEmpty($response['deleted_at']);
+        $this->assertStatusCode(StatusCode::STATUS_OK);
+        $this->assertNotNull(User::find(2));
     }
 }

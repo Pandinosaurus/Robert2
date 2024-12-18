@@ -1,39 +1,31 @@
 <?php
 declare(strict_types=1);
 
-namespace Robert2\API\Controllers;
+namespace Loxya\Controllers;
 
-use Robert2\API\Controllers\Traits\WithCrud;
-use Robert2\API\Models\Tag;
-use Slim\Exception\HttpNotFoundException;
+use Fig\Http\Message\StatusCodeInterface as StatusCode;
+use Illuminate\Database\Eloquent\Builder;
+use Loxya\Controllers\Traits\WithCrud;
+use Loxya\Http\Request;
+use Loxya\Models\Tag;
+use Psr\Http\Message\ResponseInterface;
 use Slim\Http\Response;
-use Slim\Http\ServerRequest as Request;
 
-class TagController extends BaseController
+final class TagController extends BaseController
 {
     use WithCrud;
 
-    public function getPersons(Request $request, Response $response): Response
+    public function getAll(Request $request, Response $response): ResponseInterface
     {
-        $id = (int)$request->getAttribute('id');
-        $tag = Tag::find($id);
-        if (!$tag) {
-            throw new HttpNotFoundException($request);
-        }
+        $onlyDeleted = $request->getBooleanQueryParam('deleted', false);
 
-        $results = $this->paginate($request, $tag->Persons());
-        return $response->withJson($results);
-    }
+        $tags = Tag::query()
+            ->when($onlyDeleted, static fn (Builder $subQuery) => (
+                $subQuery->onlyTrashed()
+            ))
+            ->orderBy('name')
+            ->get();
 
-    public function getMaterials(Request $request, Response $response): Response
-    {
-        $id = (int)$request->getAttribute('id');
-        $tag = Tag::find($id);
-        if (!$tag) {
-            throw new HttpNotFoundException($request);
-        }
-
-        $results = $this->paginate($request, $tag->Materials());
-        return $response->withJson($results);
+        return $response->withJson($tags, StatusCode::STATUS_OK);
     }
 }

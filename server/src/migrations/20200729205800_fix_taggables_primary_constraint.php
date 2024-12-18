@@ -1,9 +1,11 @@
 <?php
+declare(strict_types=1);
+
 use Phinx\Migration\AbstractMigration;
 
-class FixTaggablesPrimaryConstraint extends AbstractMigration
+final class FixTaggablesPrimaryConstraint extends AbstractMigration
 {
-    public function up()
+    public function up(): void
     {
         $table = $this->table('taggables');
         $table
@@ -11,7 +13,7 @@ class FixTaggablesPrimaryConstraint extends AbstractMigration
             ->save();
     }
 
-    public function down()
+    public function down(): void
     {
         $table = $this->table('taggables');
         $table

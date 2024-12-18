@@ -1,0 +1,59 @@
+add-materials-from:
+    an-event: Ajouter du matériel depuis un événement
+    dropdown:
+        title: Ajouter du matériel depuis...
+        choices:
+            an-event: Un événement...
+
+#
+# - Filtres
+#
+
+filters:
+    search-placeholder: Rechercher un matériel...
+    selected-materials-only: Matériel sélectionné uniquement
+
+#
+# - Disponibilités dans les listes
+#
+
+list-availability:
+    stock-count:
+        - "{count} disponible en stock"
+        - "{count} disponibles en stock"
+    surplus-count:
+        - "{count} en excédent / cassé"
+        - "{count} en excédent / cassés"
+
+#
+# - Fenêtres modales
+#
+
+modals:
+    #
+    # - Import du matériel depuis un événement
+    #
+
+    import-from-event:
+        event-details: "Matériel de l'événement «\_{name}\_»"
+        global-list-title: Liste globale
+        list-name: "Liste «\_{name}\_»"
+        event-is-empty: Cet événement est vide, aucun matériel ne sera importé.
+        reuse-list-from-event-warning:
+            "Attention, cela va ajouter le matériel à celui déjà sélectionné\_!"
+
+    #
+    # - Resynchronisation des données d'un matériel
+    #
+
+    resync-material-data:
+        title: "Resynchronisation des données du matériel «\_{name}\_»"
+        nothing-to-resynchronize: Il n'y a aucune données à resynchroniser.
+        resynchronize-data: Resynchroniser les données sélectionnées
+        selected-data-resynchronized: Les données sélectionnées ont été resynchronisées.
+
+        fields:
+            name: Nom
+            reference: Référence
+            unit_price: Prix unitaire
+            degressive_rate: Coef. dégressif

@@ -1,28 +1,85 @@
 <?php
 declare(strict_types=1);
 
-namespace Robert2\Tests;
+namespace Loxya\Tests;
 
-use Robert2\API\Models\Setting;
-use Robert2\API\Errors\ValidationException;
+use Loxya\Errors\Exception\ValidationException;
+use Loxya\Models\Setting;
 
-final class SettingTest extends ModelTestCase
+final class SettingTest extends TestCase
 {
-    public function testTableName(): void
-    {
-        $model = new Setting();
-        $this->assertEquals('settings', $model->getTable());
-    }
-
     public function testGetList(): void
     {
+        // - Si non spécifiée (ou `withSensitive = true`), les données sensibles doivent être présentes.
         $result = Setting::getList();
         $expected = [
-            'event_summary_material_display_mode' => 'sub-categories',
-            'event_summary_custom_text_title' => "Contrat",
-            'event_summary_custom_text' => "Un petit contrat de test.",
+            'eventSummary' => [
+                'customText' => [
+                    'title' => "Contrat",
+                    'content' => "Un petit contrat de test.",
+                ],
+                'materialDisplayMode' => 'categories',
+                'showDescriptions' => false,
+                'showLegalNumbers' => true,
+                'showReplacementPrices' => true,
+                'showTags' => false,
+                'showPictures' => false,
+            ],
+            'calendar' => [
+                'event' => [
+                    'showLocation' => true,
+                    'showBorrower' => false,
+                ],
+                'public' => [
+                    'enabled' => true,
+                    'uuid' => 'dfe7cd82-52b9-4c9b-aaed-033df210f23b',
+                    'displayedPeriod' => 'operation',
+                ],
+            ],
+            'returnInventory' => [
+                'mode' => 'start-empty',
+            ],
+            'billing' => [
+                'defaultTax' => 1,
+                'defaultDegressiveRate' => 1,
+            ],
         ];
-        $this->assertEquals($expected, $result);
+        $this->assertSameCanonicalize($expected, $result);
+
+        // - Si `withSensitive = false`, les données sensibles ne sont pas retournées.
+        $result = Setting::getList(false);
+        $expected = [
+            'eventSummary' => [
+                'customText' => [
+                    'title' => "Contrat",
+                    'content' => "Un petit contrat de test.",
+                ],
+                'materialDisplayMode' => 'categories',
+                'showDescriptions' => false,
+                'showLegalNumbers' => true,
+                'showReplacementPrices' => true,
+                'showTags' => false,
+                'showPictures' => false,
+            ],
+            'calendar' => [
+                'event' => [
+                    'showLocation' => true,
+                    'showBorrower' => false,
+                ],
+                'public' => [
+                    'enabled' => true,
+                    'displayedPeriod' => 'operation',
+                ],
+            ],
+            'returnInventory' => [
+                'mode' => 'start-empty',
+            ],
+            'billing' => [
+                'defaultTax' => 1,
+                'defaultDegressiveRate' => 1,
+            ],
+        ];
+        $this->assertSameCanonicalize($expected, $result);
     }
 
     public function testGetAll(): void
@@ -30,76 +87,191 @@ final class SettingTest extends ModelTestCase
         $result = Setting::get()->toArray();
         $expected = [
             [
-                'key' => 'event_summary_material_display_mode',
-                'value' => 'sub-categories',
+                'key' => 'billing.defaultDegressiveRate',
+                'value' => 1,
             ],
             [
-                'key' => 'event_summary_custom_text_title',
+                'key' => 'billing.defaultTax',
+                'value' => 1,
+            ],
+            [
+                'key' => 'calendar.event.showBorrower',
+                'value' => false,
+            ],
+            [
+                'key' => 'calendar.event.showLocation',
+                'value' => true,
+            ],
+            [
+                'key' => 'calendar.public.displayedPeriod',
+                'value' => 'operation',
+            ],
+            [
+                'key' => 'calendar.public.enabled',
+                'value' => true,
+            ],
+            [
+                'key' => 'calendar.public.uuid',
+                'value' => 'dfe7cd82-52b9-4c9b-aaed-033df210f23b',
+            ],
+            [
+                'key' => 'eventSummary.customText.content',
+                'value' => "Un petit contrat de test.",
+            ],
+            [
+                'key' => 'eventSummary.customText.title',
                 'value' => "Contrat",
             ],
             [
-                'key' => 'event_summary_custom_text',
-                'value' => "Un petit contrat de test.",
+                'key' => 'eventSummary.materialDisplayMode',
+                'value' => 'categories',
+            ],
+            [
+                'key' => 'eventSummary.showDescriptions',
+                'value' => false,
+            ],
+            [
+                'key' => 'eventSummary.showLegalNumbers',
+                'value' => true,
+            ],
+            [
+                'key' => 'eventSummary.showPictures',
+                'value' => false,
+            ],
+            [
+                'key' => 'eventSummary.showReplacementPrices',
+                'value' => true,
+            ],
+            [
+                'key' => 'eventSummary.showTags',
+                'value' => false,
+            ],
+            [
+                'key' => 'returnInventory.mode',
+                'value' => 'start-empty',
             ],
         ];
-        $this->assertEquals($expected, $result);
+        $this->assertSameCanonicalize($expected, $result);
     }
 
     public function testGetWithKey(): void
     {
-        $result = Setting::getWithKey('event_summary_material_display_mode');
-        $this->assertEquals('sub-categories', $result);
+        $result = Setting::getWithKey('eventSummary.materialDisplayMode');
+        $this->assertEquals('categories', $result);
 
-        $result = Setting::getWithKey('event_summary_custom_text_title');
+        $result = Setting::getWithKey('eventSummary.customText.title');
         $this->assertEquals("Contrat", $result);
 
-        $result = Setting::getWithKey('event_summary_custom_text');
-        $this->assertEquals("Un petit contrat de test.", $result);
+        $result = Setting::getWithKey('eventSummary.customText');
+        $expected = ['title' => 'Contrat', 'content' => 'Un petit contrat de test.'];
+        $this->assertEquals($expected, $result);
+
+        $result = Setting::getWithKey('eventSummary');
+        $expected = [
+            'customText' => [
+                'title' => 'Contrat',
+                'content' => 'Un petit contrat de test.',
+            ],
+            'materialDisplayMode' => 'categories',
+            'showLegalNumbers' => true,
+            'showReplacementPrices' => true,
+            'showDescriptions' => false,
+            'showTags' => false,
+            'showPictures' => false,
+        ];
+        $this->assertEquals($expected, $result);
 
         $result = Setting::getWithKey('inexistant');
         $this->assertNull($result);
     }
 
-    public function testUpdateBadKey(): void
+    public function testBulkEditBadKey(): void
     {
         $this->expectException(ValidationException::class);
-        $this->expectExceptionCode(ERROR_VALIDATION);
-        Setting::staticEdit(null, ['inexistant' => 'some-text']);
+        Setting::bulkEdit(['inexistant' => 'some-text']);
     }
 
-    public function testUpdateBadValue(): void
+    public function testBulkEditBadValue(): void
     {
         $this->expectException(ValidationException::class);
-        $this->expectExceptionCode(ERROR_VALIDATION);
-        Setting::staticEdit(null, ['event_summary_material_display_mode' => 'not-valid']);
+        Setting::bulkEdit(['eventSummary.materialDisplayMode' => 'not-valid']);
     }
 
-    public function testUpdate(): void
+    public function testBulkEdit(): void
     {
-        Setting::staticEdit(null, [
-            'event_summary_material_display_mode' => 'flat',
-            'event_summary_custom_text_title' => 'test',
-            'event_summary_custom_text' => null,
+        Setting::bulkEdit([
+            'eventSummary.materialDisplayMode' => 'flat',
+            'eventSummary.customText.title' => 'test',
+            'eventSummary.customText.content' => null,
+            'eventSummary.showLegalNumbers' => false,
+            'eventSummary.showReplacementPrices' => false,
+            'eventSummary.showDescriptions' => true,
+            'eventSummary.showTags' => true,
+            'eventSummary.showPictures' => true,
+            'calendar.event.showLocation' => false,
+            'calendar.event.showBorrower' => true,
+            'calendar.public.displayedPeriod' => 'both',
+            'billing.defaultDegressiveRate' => 3,
+            'billing.defaultTax' => 2,
         ]);
         $expected = [
-            'event_summary_material_display_mode' => 'flat',
-            'event_summary_custom_text_title' => 'test',
-            'event_summary_custom_text' => null,
+            'eventSummary' => [
+                'customText' => [
+                    'title' => 'test',
+                    'content' => null,
+                ],
+                'materialDisplayMode' => 'flat',
+                'showLegalNumbers' => false,
+                'showReplacementPrices' => false,
+                'showDescriptions' => true,
+                'showTags' => true,
+                'showPictures' => true,
+            ],
+            'calendar' => [
+                'event' => [
+                    'showLocation' => false,
+                    'showBorrower' => true,
+                ],
+                'public' => [
+                    'enabled' => true,
+                    'uuid' => 'dfe7cd82-52b9-4c9b-aaed-033df210f23b',
+                    'displayedPeriod' => 'both',
+                ],
+            ],
+            'returnInventory' => [
+                'mode' => 'start-empty',
+            ],
+            'billing' => [
+                'defaultTax' => 2,
+                'defaultDegressiveRate' => 3,
+            ],
         ];
         $this->assertEquals($expected, Setting::getList());
     }
 
-    public function testRemove(): void
+    public function testReset(): void
     {
-        $this->expectException(\InvalidArgumentException::class);
-        $this->expectExceptionMessage("Settings cannot be deleted.");
-        Setting::staticRemove(1);
+        // - Par défaut, le mode d'affichage du matériel est `sub-categories`.
+        Setting::find('eventSummary.materialDisplayMode')->reset();
+        $this->assertEquals('sub-categories', Setting::getWithKey('eventSummary.materialDisplayMode'));
+
+        // - Par défaut, le calendrier public est désactivé.
+        Setting::find('calendar.public.enabled')->reset();
+        $this->assertEquals(false, Setting::getWithKey('calendar.public.enabled'));
+
+        // - Par défaut, l'UUID de calendrier est un UUID aléatoire.
+        Setting::find('calendar.public.uuid')->reset();
+        $this->assertNotEquals('dfe7cd82-52b9-4c9b-aaed-033df210f23b', Setting::getWithKey('calendar.public.uuid'));
+
+        // - Par défaut, le mode des inventaires de retour est 'start-empty'.
+        Setting::find('returnInventory.mode')->reset();
+        $this->assertEquals('start-empty', Setting::getWithKey('returnInventory.mode'));
     }
 
-    public function testUnremove(): void
+    public function testRemove(): void
     {
-        $this->expectException(\InvalidArgumentException::class);
-        $this->expectExceptionMessage("Settings cannot be restored.");
-        Setting::staticUnremove(1);
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage("Settings cannot be deleted.");
+        Setting::findOrFail('calendar.public.enabled')->delete();
     }
 }

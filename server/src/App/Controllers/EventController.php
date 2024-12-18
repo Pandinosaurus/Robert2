@@ -1,329 +1,604 @@
 <?php
 declare(strict_types=1);
 
-namespace Robert2\API\Controllers;
+namespace Loxya\Controllers;
 
-use Illuminate\Database\Eloquent\ModelNotFoundException;
-use Robert2\API\Controllers\Traits\WithCrud;
-use Robert2\API\Controllers\Traits\WithPdf;
-use Robert2\API\Errors\ValidationException;
-use Robert2\API\Models\Event;
-use Robert2\API\Models\Material;
-use Robert2\API\Models\Park;
-use Slim\Exception\HttpNotFoundException;
+use Carbon\Carbon;
+use Carbon\CarbonImmutable;
+use DI\Container;
+use Fig\Http\Message\StatusCodeInterface as StatusCode;
+use Illuminate\Database\Eloquent\Builder;
+use Loxya\Controllers\Traits\Crud;
+use Loxya\Errors\Exception\HttpConflictException;
+use Loxya\Errors\Exception\HttpUnprocessableEntityException;
+use Loxya\Errors\Exception\ValidationException;
+use Loxya\Http\Request;
+use Loxya\Models\Document;
+use Loxya\Models\Enums\Group;
+use Loxya\Models\Estimate;
+use Loxya\Models\Event;
+use Loxya\Models\EventMaterial;
+use Loxya\Models\Invoice;
+use Loxya\Services\Auth;
+use Loxya\Services\I18n;
+use Loxya\Services\Logger;
+use Loxya\Services\Mailer;
+use Loxya\Support\Arr;
+use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\UploadedFileInterface;
+use Slim\Exception\HttpBadRequestException;
+use Slim\Exception\HttpForbiddenException;
 use Slim\Http\Response;
-use Slim\Http\ServerRequest as Request;
 
-class EventController extends BaseController
+final class EventController extends BaseController
 {
-    use WithCrud;
-    use WithPdf;
+    use Crud\SoftDelete;
 
-    // ——————————————————————————————————————————————————————
-    // —
-    // —    Actions
-    // —
-    // ——————————————————————————————————————————————————————
+    private I18n $i18n;
+    protected Mailer $mailer;
+    protected Logger $logger;
 
-    public function getAll(Request $request, Response $response): Response
+    public function __construct(Container $container, I18n $i18n, Mailer $mailer, Logger $logger)
     {
-        $search = $request->getQueryParam('search', null);
-        $exclude = $request->getQueryParam('exclude', null);
+        parent::__construct($container);
 
-        if ($search) {
-            $query = (new Event)
-                ->addSearch($search)
-                ->select(['id', 'title', 'start_date', 'end_date', 'location'])
-                ->whereHas('materials');
-
-            if ($exclude) {
-                $query->where('id', '<>', $exclude);
-            }
-
-            $count = $query->count();
-
-            $results = $query
-                ->orderBy('start_date', 'desc')
-                ->limit(10)
-                ->get();
-
-            return $response->withJson(['count' => $count, 'data' => $results]);
-        }
-
-        $startDate = $request->getQueryParam('start', null);
-        $endDate = $request->getQueryParam('end', null);
-        $deleted = (bool)$request->getQueryParam('deleted', false);
-        $withMaterials = (bool)$request->getQueryParam('with-materials', false);
-
-        $results = (new Event)
-            ->setSearchPeriod($startDate, $endDate)
-            ->getAll($deleted)
-            ->with('Beneficiaries:persons.id,first_name,last_name')
-            ->with('Technicians');
-
-        if ($withMaterials) {
-            $results->with(['Materials' => function ($q) {
-                $q->orderBy('name', 'asc');
-            }]);
-        }
-
-        $data = $results->get()->toArray();
-        $useMultipleParks = Park::count() > 1;
-        $today = (new \DateTime())->setTime(0, 0, 0);
-        foreach ($data as $index => $event) {
-            $data[$index]['has_missing_materials'] = null;
-            $data[$index]['has_not_returned_materials'] = null;
-            $data[$index]['parks'] = $useMultipleParks ? Event::getParks($event['id']) : null;
-
-            if ($event['is_archived']) {
-                continue;
-            }
-
-            $eventEndDate = new \DateTime($event['end_date']);
-            if ($eventEndDate >= $today) {
-                $eventMissingMaterials = Event::getMissingMaterials($event['id']);
-                $data[$index]['has_missing_materials'] = !empty($eventMissingMaterials);
-            } elseif ($event['is_return_inventory_done']) {
-                $data[$index]['has_not_returned_materials'] = Event::hasNotReturnedMaterials($event['id']);
-            }
-        }
-
-        return $response->withJson(compact('data'));
+        $this->i18n = $i18n;
+        $this->mailer = $mailer;
+        $this->logger = $logger;
     }
 
-    public function getOne(Request $request, Response $response): Response
+    // ------------------------------------------------------
+    // -
+    // -    Actions
+    // -
+    // ------------------------------------------------------
+
+    public function getAll(Request $request, Response $response): ResponseInterface
     {
-        $id = (int)$request->getAttribute('id');
-        if (!Event::staticExists($id)) {
-            throw new HttpNotFoundException($request);
-        }
+        $search = $request->getStringQueryParam('search');
+        $exclude = $request->getIntegerQueryParam('exclude');
 
-        $eventData = $this->_getFormattedEvent($id);
+        $query = Event::query()
+            ->when(
+                $search !== null && mb_strlen($search) >= 2,
+                static fn ($builder) => $builder->search($search),
+            )
+            ->when($exclude !== null, static fn (Builder $subQuery) => (
+                $subQuery->where('id', '<>', $exclude)
+            ))
+            ->when(
+                Auth::is([Group::READONLY_PLANNING_SELF]),
+                static fn (Builder $subQuery) => (
+                    $subQuery->withInvolvedUser(Auth::user())
+                ),
+            )
+            ->orderBy('mobilization_start_date', 'desc')
+            ->whereHas('materials', static fn (Builder $eventMaterialQuery) => (
+                $eventMaterialQuery->whereHas('material', static fn (Builder $materialQuery) => (
+                    $materialQuery->withoutTrashed()
+                ))
+            ));
 
-        $eventData['has_missing_materials'] = null;
-        $eventData['has_not_returned_materials'] = null;
-
-        $today = (new \DateTime())->setTime(0, 0, 0);
-        $eventEndDate = new \DateTime($eventData['end_date']);
-        if ($eventEndDate >= $today) {
-            $eventMissingMaterials = Event::getMissingMaterials($eventData['id']);
-            $eventData['has_missing_materials'] = !empty($eventMissingMaterials);
-        } elseif ($eventData['is_return_inventory_done']) {
-            $eventData['has_not_returned_materials'] = Event::hasNotReturnedMaterials($eventData['id']);
-        }
-
-        return $response->withJson($eventData);
+        return $response->withJson([
+            'count' => $query->count(),
+            'data' => $query
+                ->limit(10)->get()
+                ->map(static fn (Event $event) => (
+                    $event->serialize(Event::SERIALIZE_SUMMARY)
+                )),
+        ]);
     }
 
-    public function getMissingMaterials(Request $request, Response $response): Response
+    public function getOne(Request $request, Response $response): ResponseInterface
     {
-        $id = (int)$request->getAttribute('id');
-        if (!Event::staticExists($id)) {
-            throw new HttpNotFoundException($request);
-        }
+        $id = $request->getIntegerAttribute('id');
+        $event = Event::findOrFailForUser($id, Auth::user());
 
-        $eventMissingMaterials = Event::getMissingMaterials($id);
-        if (empty($eventMissingMaterials)) {
-            return $response->withJson([]);
-        }
-
-        return $response->withJson($eventMissingMaterials);
+        return $response->withJson(static::_formatOne($event), StatusCode::STATUS_OK);
     }
 
-    public function create(Request $request, Response $response): Response
+    public function getMissingMaterials(Request $request, Response $response): ResponseInterface
     {
-        $postData = (array)$request->getParsedBody();
-        $id = $this->_saveEvent(null, $postData);
+        $id = $request->getIntegerAttribute('id');
 
-        return $response->withJson($this->_getFormattedEvent($id), SUCCESS_CREATED);
+        $missingMaterials = Event::findOrFailForUser($id, Auth::user())
+            ->missingMaterials()
+            ->map(static fn (EventMaterial $material) => (
+                $material->serialize(EventMaterial::SERIALIZE_WITH_QUANTITY_MISSING)
+            ));
+
+        return $response->withJson($missingMaterials, StatusCode::STATUS_OK);
     }
 
-    public function update(Request $request, Response $response): Response
+    public function getDocuments(Request $request, Response $response): ResponseInterface
     {
-        $id = (int)$request->getAttribute('id');
-        if (!Event::staticExists($id)) {
-            throw new HttpNotFoundException($request);
+        $id = $request->getIntegerAttribute('id');
+        $event = Event::findOrFailForUser($id, Auth::user());
+
+        return $response->withJson($event->documents, StatusCode::STATUS_OK);
+    }
+
+    public function getOnePdf(Request $request, Response $response): ResponseInterface
+    {
+        $id = $request->getIntegerAttribute('id');
+        $event = Event::findOrFailForUser($id, Auth::user());
+
+        $sortedBy = $request->getRawEnumQueryParam('sortedBy', ['lists', 'parks'], 'lists');
+        $pdf = $event->toPdf($this->i18n, $sortedBy);
+
+        return $pdf->asResponse($response);
+    }
+
+    public function create(Request $request, Response $response): ResponseInterface
+    {
+        $postData = Event::unserialize((array) $request->getParsedBody());
+        if (empty($postData)) {
+            throw new HttpBadRequestException($request, "No data was provided.");
         }
-
-        $postData = (array)$request->getParsedBody();
-        $id = $this->_saveEvent($id, $postData);
-
-        return $response->withJson($this->_getFormattedEvent($id), SUCCESS_OK);
-    }
-
-    public function duplicate(Request $request, Response $response): Response
-    {
-        $originalId = (int)$request->getAttribute('id');
-        $postData = (array)$request->getParsedBody();
 
         try {
-            $newEvent = Event::duplicate($originalId, $postData);
-        } catch (ModelNotFoundException $e) {
-            throw new HttpNotFoundException($request);
+            $event = Event::new(array_replace($postData, ['author_id' => Auth::user()->id]));
+        } catch (ValidationException $e) {
+            $errors = Event::serializeValidation($e->getValidationErrors());
+            throw new ValidationException($errors);
         }
 
-        return $response->withJson($this->_getFormattedEvent($newEvent->id), SUCCESS_CREATED);
+        return $response->withJson(static::_formatOne($event), StatusCode::STATUS_CREATED);
     }
 
-    public function updateMaterialReturn(Request $request, Response $response): Response
+    public function update(Request $request, Response $response): ResponseInterface
     {
-        $id = (int)$request->getAttribute('id');
-        if (!Event::staticExists($id)) {
-            throw new HttpNotFoundException($request);
-        }
-
-        $data = (array)$request->getParsedBody();
-        $this->_saveReturnQuantities($id, $data);
-
-        return $response->withJson($this->_getFormattedEvent($id), SUCCESS_OK);
-    }
-
-    public function updateMaterialTerminate(Request $request, Response $response): Response
-    {
-        $id = (int)$request->getAttribute('id');
-        if (!Event::staticExists($id)) {
-            throw new HttpNotFoundException($request);
-        }
-
-        $data = (array)$request->getParsedBody();
-        $this->_saveReturnQuantities($id, $data);
-
-        Event::staticEdit($id, [
-            'is_confirmed' => true,
-            'is_return_inventory_done' => true,
-        ]);
-
-        $this->_setBrokenMaterialsQuantities($data);
-
-        return $response->withJson($this->_getFormattedEvent($id), SUCCESS_OK);
-    }
-
-    // ——————————————————————————————————————————————————————
-    // —
-    // —    Internal Methods
-    // —
-    // ——————————————————————————————————————————————————————
-
-    protected function _saveEvent(?int $id, array $postData): int
-    {
+        $postData = Event::unserialize((array) $request->getParsedBody());
         if (empty($postData)) {
-            throw new \InvalidArgumentException(
-                "Missing request data to process validation",
-                ERROR_VALIDATION
+            throw new HttpBadRequestException($request, "No data was provided.");
+        }
+
+        $id = $request->getIntegerAttribute('id');
+        $event = Event::findOrFailForUser($id, Auth::user());
+
+        if (Auth::is(Group::READONLY_PLANNING_SELF)) {
+            // - Si l'utilisateur n'est pas un technicien assigné à l'événement ⇒ requête non autorisée.
+            $technician = Auth::user()->technician;
+            if (!$technician?->isAssignedToEvent($event)) {
+                throw new HttpForbiddenException($request);
+            }
+
+            // - Sinon, on autorise uniquement la modification du champ "note".
+            $postData = Arr::only($postData, ['note']);
+        }
+
+        try {
+            $event->edit($postData);
+        } catch (ValidationException $e) {
+            $errors = Event::serializeValidation($e->getValidationErrors());
+            throw new ValidationException($errors);
+        }
+
+        return $response->withJson(static::_formatOne($event), StatusCode::STATUS_OK);
+    }
+
+    public function duplicate(Request $request, Response $response): ResponseInterface
+    {
+        $id = $request->getIntegerAttribute('id');
+        $originalEvent = Event::findOrFail($id);
+
+        $postData = (array) $request->getParsedBody();
+        $eventData = Event::unserialize(Arr::except($postData, ['keepBillingData']));
+        $keepBillingData = is_bool($postData['keepBillingData'] ?? null)
+            ? $postData['keepBillingData']
+            : false;
+
+        if (empty($eventData)) {
+            throw new HttpBadRequestException($request, "No data was provided.");
+        }
+
+        try {
+            $newEvent = $originalEvent->duplicate($eventData, $keepBillingData, Auth::user());
+        } catch (ValidationException $e) {
+            $errors = Event::serializeValidation($e->getValidationErrors());
+            throw new ValidationException($errors);
+        }
+
+        $data = $newEvent->serialize(Event::SERIALIZE_DETAILS);
+        return $response->withJson($data, StatusCode::STATUS_CREATED);
+    }
+
+    public function updateDepartureInventory(Request $request, Response $response): ResponseInterface
+    {
+        $id = $request->getIntegerAttribute('id');
+        $event = Event::findOrFail($id);
+
+        if ($event->is_archived) {
+            throw new HttpUnprocessableEntityException($request, "This event is archived.");
+        }
+
+        // - Si l'inventaire de départ est déjà terminé.
+        if ($event->is_departure_inventory_done) {
+            throw new HttpConflictException($request, "This event's departure inventory is already done.");
+        }
+
+        // - Si l'inventaire de départ ne peut pas encore être commencé.
+        if (!$event->is_departure_inventory_period_open) {
+            throw new HttpUnprocessableEntityException($request, (
+                "This event's departure inventory cannot be done yet."
+            ));
+        }
+
+        // -  Si l'inventaire de retour ne peut plus être effectué.
+        if ($event->is_departure_inventory_period_closed) {
+            throw new HttpUnprocessableEntityException($request, (
+                "This event's departure inventory can no longer be done."
+            ));
+        }
+
+        // - Si l'événement ne contient pas de matériel, il n'y a pas d'inventaire à faire.
+        if ($event->materials->isEmpty()) {
+            throw new HttpUnprocessableEntityException($request, (
+                "This event contains no material, so there can be no inventory."
+            ));
+        }
+
+        // - S'il y a du matériel manquant, on ne peut pas faire l'inventaire de départ.
+        if ($event->has_missing_materials) {
+            throw new HttpUnprocessableEntityException($request, (
+                "This event contains shortage that should be fixed " .
+                "before proceeding with the departure inventory."
+            ));
+        }
+
+        $rawInventory = $request->getParsedBody();
+        if (!is_array($rawInventory) && $rawInventory !== null) {
+            throw new HttpBadRequestException($request, "Invalid data format.");
+        }
+
+        if (empty($rawInventory)) {
+            throw new HttpBadRequestException($request, "No data was provided.");
+        }
+
+        try {
+            $event->updateDepartureInventory($rawInventory);
+        } catch (\InvalidArgumentException $e) {
+            throw new HttpBadRequestException($request, $e->getMessage());
+        }
+
+        return $response->withJson(static::_formatOne($event), StatusCode::STATUS_OK);
+    }
+
+    public function finishDepartureInventory(Request $request, Response $response): ResponseInterface
+    {
+        $id = $request->getIntegerAttribute('id');
+        $event = Event::findOrFail($id);
+
+        if ($event->is_archived) {
+            throw new HttpUnprocessableEntityException($request, "This event is archived.");
+        }
+
+        // - Si l'inventaire de départ est déjà terminé.
+        if ($event->is_departure_inventory_done) {
+            throw new HttpConflictException($request, "This event's departure inventory is already done.");
+        }
+
+        // - Si l'inventaire de départ ne peut pas encore être commencé.
+        if (!$event->is_departure_inventory_period_open) {
+            throw new HttpUnprocessableEntityException($request, (
+                "This event's departure inventory cannot be done yet."
+            ));
+        }
+
+        // -  Si l'inventaire de départ ne peut plus être effectué.
+        if ($event->is_departure_inventory_period_closed) {
+            throw new HttpUnprocessableEntityException($request, (
+                "This event's departure inventory can no longer be done."
+            ));
+        }
+
+        // - Si l'événement ne contient pas de matériel, il n'y a pas d'inventaire à faire.
+        if ($event->materials->isEmpty()) {
+            throw new HttpUnprocessableEntityException($request, (
+                "This event contains no material, so there can be no inventory."
+            ));
+        }
+
+        // - S'il y a du matériel manquant, on ne peut pas faire l'inventaire de départ.
+        if ($event->has_missing_materials) {
+            throw new HttpUnprocessableEntityException($request, (
+                "This event contains shortage that should be fixed " .
+                "before proceeding with the departure inventory."
+            ));
+        }
+
+        $rawInventory = $request->getParsedBody();
+        if (!empty($rawInventory)) {
+            if (!is_array($rawInventory)) {
+                throw new HttpBadRequestException($request, "Invalid data format.");
+            }
+
+            try {
+                $event->updateDepartureInventory($rawInventory);
+            } catch (\InvalidArgumentException) {
+                throw new HttpBadRequestException($request, "Invalid data format.");
+            }
+        }
+
+        if (!$event->can_finish_departure_inventory) {
+            throw new HttpUnprocessableEntityException($request, (
+                "This event's departure inventory cannot be marked as finished."
+            ));
+        }
+        $event->finishDepartureInventory(Auth::user());
+
+        return $response->withJson(static::_formatOne($event), StatusCode::STATUS_OK);
+    }
+
+    public function cancelDepartureInventory(Request $request, Response $response): ResponseInterface
+    {
+        $id = $request->getIntegerAttribute('id');
+        $event = Event::findOrFail($id);
+
+        if ($event->is_archived) {
+            throw new HttpUnprocessableEntityException($request, "This event is archived.");
+        }
+
+        // - Si l'inventaire de départ n'est pas terminé, il n'y a rien à annuler.
+        if (!$event->is_departure_inventory_done) {
+            throw new HttpBadRequestException($request, "This event's departure inventory is not done.");
+        }
+
+        // - Si l'inventaire de retour est déjà terminé, on ne peut plus annuler l'inventaire de départ.
+        if ($event->is_return_inventory_done) {
+            throw new HttpUnprocessableEntityException($request, (
+                "This event's return inventory is already done, the departure inventory can no longer be cancelled."
+            ));
+        }
+
+        // - Si le début de l'événement est dans le passé, on ne peut plus annuler l'inventaire de départ.
+        if ($event->operation_period->getStartDate()->isPast()) {
+            throw new HttpUnprocessableEntityException($request, (
+                "This event has already started, the departure inventory can no longer be cancelled."
+            ));
+        }
+
+        $event->cancelDepartureInventory();
+        return $response->withJson(static::_formatOne($event), StatusCode::STATUS_OK);
+    }
+
+    public function updateReturnInventory(Request $request, Response $response): ResponseInterface
+    {
+        $id = $request->getIntegerAttribute('id');
+        $event = Event::findOrFail($id);
+
+        if ($event->is_archived) {
+            throw new HttpUnprocessableEntityException($request, "This event is archived.");
+        }
+
+        // - Si l'inventaire de retour est déjà terminé.
+        if ($event->is_return_inventory_done) {
+            throw new HttpConflictException($request, "This event's return inventory is already done.");
+        }
+
+        // - Si l'inventaire de retour ne peut pas encore être commencé.
+        if (!$event->is_return_inventory_period_open) {
+            throw new HttpUnprocessableEntityException($request, (
+                "This event's return inventory cannot be done yet."
+            ));
+        }
+
+        // - Si l'événement ne contient pas de matériel, il n'y a pas d'inventaire à faire.
+        if ($event->materials->isEmpty()) {
+            throw new HttpUnprocessableEntityException($request, (
+                "This event contains no material, so there can be no inventory."
+            ));
+        }
+
+        // - S'il y a du matériel manquant, on ne peut pas faire l'inventaire de retour.
+        if ($event->has_missing_materials) {
+            throw new HttpUnprocessableEntityException($request, (
+                "This event contains shortage that should be fixed " .
+                "before proceeding with the return inventory."
+            ));
+        }
+
+        $rawInventory = $request->getParsedBody();
+        if (!is_array($rawInventory) && $rawInventory !== null) {
+            throw new HttpBadRequestException($request, "Invalid data format.");
+        }
+
+        if (empty($rawInventory)) {
+            throw new HttpBadRequestException($request, "No data was provided.");
+        }
+
+        try {
+            $event->updateReturnInventory($rawInventory);
+        } catch (\InvalidArgumentException $e) {
+            throw new HttpBadRequestException($request, $e->getMessage());
+        }
+
+        return $response->withJson(static::_formatOne($event), StatusCode::STATUS_OK);
+    }
+
+    public function finishReturnInventory(Request $request, Response $response): ResponseInterface
+    {
+        $id = $request->getIntegerAttribute('id');
+        $event = Event::findOrFail($id);
+
+        if ($event->is_archived) {
+            throw new HttpUnprocessableEntityException($request, "This event is archived.");
+        }
+
+        // - Si l'inventaire de retour est déjà terminé.
+        if ($event->is_return_inventory_done) {
+            throw new HttpConflictException($request, "This event's return inventory is already done.");
+        }
+
+        // - Si l'inventaire de retour ne peut pas encore être commencé.
+        if (!$event->is_return_inventory_period_open) {
+            throw new HttpUnprocessableEntityException($request, (
+                "This event's return inventory cannot be done yet."
+            ));
+        }
+
+        // - Si l'événement ne contient pas de matériel, il n'y a pas d'inventaire à faire.
+        if ($event->materials->isEmpty()) {
+            throw new HttpUnprocessableEntityException($request, (
+                "This event contains no material, so there can be no inventory."
+            ));
+        }
+
+        // - S'il y a du matériel manquant, on ne peut pas faire l'inventaire de retour.
+        if ($event->has_missing_materials) {
+            throw new HttpUnprocessableEntityException($request, (
+                "This event contains shortage that should be fixed " .
+                "before proceeding with the return inventory."
+            ));
+        }
+
+        $rawInventory = $request->getParsedBody();
+        if (!empty($rawInventory)) {
+            if (!is_array($rawInventory)) {
+                throw new HttpBadRequestException($request, "Invalid data format.");
+            }
+
+            try {
+                $event->updateReturnInventory($rawInventory);
+            } catch (\InvalidArgumentException) {
+                throw new HttpBadRequestException($request, "Invalid data format.");
+            }
+        }
+
+        if (!$event->can_finish_return_inventory) {
+            throw new HttpUnprocessableEntityException($request, (
+                "This event's return inventory cannot be marked as finished."
+            ));
+        }
+        $event->finishReturnInventory(Auth::user());
+
+        return $response->withJson(static::_formatOne($event), StatusCode::STATUS_OK);
+    }
+
+    public function cancelReturnInventory(Request $request, Response $response): ResponseInterface
+    {
+        $id = $request->getIntegerAttribute('id');
+        $event = Event::findOrFail($id);
+
+        if ($event->is_archived) {
+            throw new HttpUnprocessableEntityException($request, "This event is archived.");
+        }
+
+        // - Si l'inventaire de retour n'est pas terminé, il n'y a rien à annuler.
+        if (!$event->is_return_inventory_done) {
+            throw new HttpBadRequestException($request, "This event's return inventory is not done.");
+        }
+
+        // - S'il n'y a pas de matériel cassé, on permet l'annulation de
+        //   l'inventaire quelque soit le moment ou il a été terminé.
+        //   Sinon, l'inventaire est annulable pendant 1 semaine après
+        //   l'avoir marqué comme terminé.
+        if ($event->has_materials_returned_broken) {
+            $isCancellable = (
+                $event->return_inventory_datetime !== null &&
+                CarbonImmutable::parse($event->return_inventory_datetime)
+                    ->isAfter(Carbon::now()->subWeek())
             );
+            if (!$isCancellable) {
+                throw new HttpUnprocessableEntityException($request, (
+                    "This event's return inventory can no longer been cancelled."
+                ));
+            }
         }
 
-        $event = Event::staticEdit($id, $postData);
-
-        return $event->id;
+        $event->cancelReturnInventory();
+        return $response->withJson(static::_formatOne($event), StatusCode::STATUS_OK);
     }
 
-    protected function _saveReturnQuantities(int $id, array $data): void
+    public function createEstimate(Request $request, Response $response): ResponseInterface
     {
-        $event = Event::find($id);
+        $id = $request->getIntegerAttribute('id');
+        $event = Event::findOrFail($id);
 
-        $eventMaterials = $event->Materials()->get()->toArray();
-        $eventMaterialsQuantities = [];
-        foreach ($eventMaterials as $material) {
-            $eventMaterialsQuantities[$material['id']] = $material['pivot']['quantity'];
-        };
-
-        $quantities = [];
-        $errors = [];
-        foreach ($data as $quantity) {
-            if (!array_key_exists('id', $quantity)) {
-                continue;
-            }
-            $materialId = $quantity['id'];
-
-            if (!array_key_exists('actual', $quantity) || !is_integer($quantity['actual'])) {
-                $errors[] = ['id' => $materialId, 'message' => "Quantité retournée invalide."];
-                continue;
-            }
-            $actual = (int)$quantity['actual'];
-
-            if (!array_key_exists('broken', $quantity) || !is_integer($quantity['broken'])) {
-                $errors[] = ['id' => $materialId, 'message' => "Quantité en panne invalide."];
-                continue;
-            }
-            $broken = (int)$quantity['broken'];
-
-            if ($actual < 0 || $broken < 0) {
-                $errors[] = [
-                    'id' => $materialId,
-                    'message' => "Les quantités ne peuvent pas être négatives."
-                ];
-                continue;
-            }
-
-            if ($actual > $eventMaterialsQuantities[$materialId]) {
-                $errors[] = [
-                    'id' => $materialId,
-                    'message' => "La quantité retournée ne peut pas être supérieure à la quantité sortie."
-                ];
-                continue;
-            }
-
-            if ($broken > $actual) {
-                $errors[] = [
-                    'id' => $materialId,
-                    'message' => "La quantité en panne ne peut pas être supérieure à la quantité retournée."
-                ];
-                continue;
-            }
-
-            $quantities[$materialId] = [
-                'quantity_returned' => $actual,
-                'quantity_broken' => $broken,
-            ];
-        }
-
-        if (!empty($errors)) {
-            $error = new ValidationException();
-            $error->setValidationErrors($errors);
-            throw $error;
-        }
-
-        $event->Materials()->sync($quantities);
+        $estimate = Estimate::createFromBooking($event, Auth::user());
+        return $response->withJson($estimate, StatusCode::STATUS_CREATED);
     }
 
-    protected function _setBrokenMaterialsQuantities(array $data): void
+    public function createInvoice(Request $request, Response $response): ResponseInterface
     {
-        foreach ($data as $quantities) {
-            $broken = (int)$quantities['broken'];
-            if ($broken === 0) {
-                continue;
-            }
+        $id = $request->getIntegerAttribute('id');
+        $event = Event::findOrFail($id);
 
-            $material = Material::find($quantities['id']);
-            if (!$material) {
-                continue;
-            }
-
-            $material->out_of_order_quantity += (int)$quantities['broken'];
-            $material->save();
-        }
+        $invoice = Invoice::createFromBooking($event, Auth::user());
+        return $response->withJson($invoice, StatusCode::STATUS_CREATED);
     }
 
-    protected function _getFormattedEvent(int $id): array
+    public function attachDocument(Request $request, Response $response): ResponseInterface
     {
-        $model = (new Event)
-            ->with('User')
-            ->with('Technicians')
-            ->with('Beneficiaries')
-            ->with('Materials')
-            ->with('Bills')
-            ->with('Estimates')
-            ->find($id);
+        $id = $request->getIntegerAttribute('id');
+        $event = Event::findOrFail($id);
 
-        $result = $model->toArray();
-        if ($model->bills) {
-            $result['bills'] = $model->bills;
-        }
-        if ($model->estimates) {
-            $result['estimates'] = $model->estimates;
+        /** @var UploadedFileInterface[] $uploadedFiles */
+        $uploadedFiles = $request->getUploadedFiles();
+        if (count($uploadedFiles) !== 1) {
+            throw new HttpBadRequestException($request, "Invalid number of files sent: a single file is expected.");
         }
 
-        return $result;
+        $file = array_values($uploadedFiles)[0];
+        $document = new Document(compact('file'));
+        $document->author()->associate(Auth::user());
+        $event->documents()->save($document);
+
+        return $response->withJson($document, StatusCode::STATUS_CREATED);
+    }
+
+    public function archive(Request $request, Response $response): ResponseInterface
+    {
+        $id = $request->getIntegerAttribute('id');
+        $event = Event::findOrFail($id);
+
+        $event->is_archived = true;
+        $event->save();
+
+        return $response->withJson(static::_formatOne($event), StatusCode::STATUS_OK);
+    }
+
+    public function unarchive(Request $request, Response $response): ResponseInterface
+    {
+        $id = $request->getIntegerAttribute('id');
+        $event = Event::findOrFail($id);
+
+        $event->is_archived = false;
+        $event->save();
+
+        return $response->withJson(static::_formatOne($event), StatusCode::STATUS_OK);
+    }
+
+    public function delete(Request $request, Response $response): ResponseInterface
+    {
+        $id = $request->getIntegerAttribute('id');
+        $event = Event::withTrashed()
+            ->orWhere(static function ($query) {
+                $query
+                    ->where('is_confirmed', false)
+                    ->where('is_return_inventory_done', false);
+            })
+            ->findOrFail($id);
+
+        $isDeleted = $event->trashed()
+            ? $event->forceDelete()
+            : $event->delete();
+
+        if (!$isDeleted) {
+            throw new \RuntimeException("An unknown error occurred while deleting the event.");
+        }
+
+        return $response->withStatus(StatusCode::STATUS_NO_CONTENT);
+    }
+
+    // ------------------------------------------------------
+    // -
+    // -    Internal Methods
+    // -
+    // ------------------------------------------------------
+
+    protected static function _formatOne(Event $event): array
+    {
+        return $event->serialize(Event::SERIALIZE_DETAILS);
     }
 }

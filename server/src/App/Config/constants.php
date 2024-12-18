@@ -25,6 +25,10 @@ if (!defined('LOCALES_FOLDER')) {
     define('LOCALES_FOLDER', SRC_FOLDER . DS . 'locales');
 }
 
+if (!defined('MIGRATIONS_FOLDER')) {
+    define('MIGRATIONS_FOLDER', SRC_FOLDER . DS . 'migrations');
+}
+
 if (!defined('PUBLIC_FOLDER')) {
     define('PUBLIC_FOLDER', SRC_FOLDER . DS . 'public');
 }
@@ -37,29 +41,22 @@ if (!defined('CACHE_FOLDER')) {
     define('CACHE_FOLDER', VAR_FOLDER . DS . 'cache');
 }
 
+if (!defined('TMP_FOLDER')) {
+    define('TMP_FOLDER', VAR_FOLDER . DS . 'tmp');
+}
+
+if (!defined('LOGS_FOLDER')) {
+    define('LOGS_FOLDER', VAR_FOLDER . DS . 'logs');
+}
+
 if (!defined('VIEWS_FOLDER')) {
     define('VIEWS_FOLDER', SRC_FOLDER . DS . 'views');
 }
-if (!defined('CONFIG_FOLDER')) {
-    define('CONFIG_FOLDER', SRC_FOLDER . DS . 'App' . DS . 'Config');
+
+if (!defined('APP_FOLDER')) {
+    define('APP_FOLDER', SRC_FOLDER . DS . 'App');
 }
 
 if (!defined('CONFIG_FOLDER')) {
-    define('CONFIG_FOLDER', SRC_FOLDER . DS . 'App' . DS . 'Config');
+    define('CONFIG_FOLDER', APP_FOLDER . DS . 'Config');
 }
-
-//
-// - Api codes
-//
-
-// - Errors codes
-define('ERROR_VALIDATION', 400);
-define('ERROR_UNAUTHORIZED', 401);
-define('ERROR_NOT_FOUND', 404);
-define('ERROR_NOT_ALLOWED', 405);
-define('ERROR_DUPLICATE', 409);
-define('ERROR_SERVER', 500);
-
-// - Success codes
-define('SUCCESS_OK', 200);
-define('SUCCESS_CREATED', 201);

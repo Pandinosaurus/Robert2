@@ -1,0 +1,141 @@
+@use '~@/themes/default/style/globals';
+
+.Input {
+    $block: &;
+
+    //
+    // - Custom properties
+    //
+
+    --input-width: var(--Input--input-width, 100%);
+
+    //
+    // - Règles
+    //
+
+    display: flex;
+    flex-wrap: nowrap;
+    width: 100%;
+
+    &__field {
+        flex: 1;
+        max-width: var(--input-width);
+    }
+
+    &__input {
+        width: 100%;
+
+        padding: globals.$input-padding-vertical globals.$input-padding-horizontal;
+        outline: 0;
+        border: globals.$input-border-width solid globals.$input-border-color;
+        border-radius: globals.$input-border-radius;
+        background-color: globals.$input-background-color;
+        color: globals.$input-text-color;
+        font-family: globals.$base-font-family;
+        font-size: globals.$input-font-size;
+        line-height: globals.$input-line-height;
+
+        &::placeholder {
+            color: globals.$input-placeholder-color;
+        }
+
+        &:-webkit-autofill,
+        &:-webkit-autofill:hover,
+        &:-webkit-autofill:focus {
+            -webkit-text-fill-color: globals.$input-autofill-text-color;
+            box-shadow: 0 0 0 1000px globals.$input-autofill-background-color inset;
+            transition: background-color 50000ms ease-in-out 0;
+        }
+
+        &::-webkit-search-cancel-button {
+            display: none;
+        }
+    }
+
+    &__addon {
+        flex: 0 0 auto;
+        display: inline-block;
+        min-width: 40px;
+        padding: globals.$input-padding-vertical globals.$input-padding-horizontal;
+        border: globals.$input-border-width solid globals.$input-border-color;
+        border-left: 0;
+        border-radius: 0 globals.$input-border-radius globals.$input-border-radius 0;
+        background-color: globals.$input-background-color;
+        color: globals.$input-text-color;
+        text-align: center;
+    }
+
+    //
+    // - États
+    //
+
+    &--disabled {
+        #{$block}__input,
+        #{$block}__addon {
+            border-color: globals.$input-disabled-border-color;
+            background-color: globals.$input-disabled-background-color;
+            color: globals.$input-disabled-text-color;
+        }
+
+        #{$block}__input {
+            &::placeholder {
+                color: globals.$input-disabled-placeholder-color;
+            }
+        }
+    }
+
+    &--focused {
+        #{$block}__input,
+        #{$block}__addon {
+            border-color: globals.$input-focus-border-color;
+            background-color: globals.$input-focus-background-color;
+            color: globals.$input-focus-text-color;
+        }
+    }
+
+    //
+    // -- Avec addon.
+    //
+
+    &--with-addon {
+        #{$block}__input {
+            display: inline-block;
+            padding-right: 0;
+            border-right: 0;
+            border-radius: globals.$input-border-radius 0 0 globals.$input-border-radius;
+        }
+    }
+
+    //
+    // -- Alignement du texte
+    //
+
+    &--align-center {
+        #{$block}__input {
+            text-align: center;
+        }
+    }
+
+    &--align-right {
+        #{$block}__input {
+            text-align: right;
+        }
+    }
+
+    //
+    // - Invalide
+    //
+
+    &--invalid {
+        &:not(&--focused) {
+            /* stylelint-disable selector-class-pattern */
+            #{$block}__input,
+            #{$block}__addon {
+                border-color: globals.$input-error-border-color;
+                background-color: globals.$input-error-background-color;
+                color: globals.$input-error-text-color;
+            }
+            /* stylelint-enable selector-class-pattern */
+        }
+    }
+}

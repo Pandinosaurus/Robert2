@@ -1,282 +1,215 @@
 <?php
 declare(strict_types=1);
 
-namespace Robert2\API\Models;
+namespace Loxya\Models;
 
+use Brick\Math\BigDecimal as Decimal;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\MissingAttributeException;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\ModelNotFoundException;
-use Illuminate\Database\QueryException;
+use Loxya\Errors\Exception\ValidationException;
+use Loxya\Support\Arr;
+use Respect\Validation\Exceptions\AllOfException;
+use Respect\Validation\Exceptions\AnyOfException;
 use Respect\Validation\Exceptions\NestedValidationException;
-use Robert2\API\Config\Config;
-use Robert2\API\Errors\ValidationException;
+use Respect\Validation\Exceptions\NotEmptyException;
+use Respect\Validation\Exceptions\OneOfException;
 
+/**
+ * @mixin \Illuminate\Database\Eloquent\Builder
+ *
+ * @method null|static first($columns = ['*'])
+ * @method static firstOrNew(array $attributes = [], array $values = [])
+ * @method static firstOrFail($columns = ['*'])
+ * @method static firstOrCreate(array $attributes, array $values = [])
+ * @method static firstOr($columns = ['*'], \Closure $callback = null)
+ * @method static firstWhere($column, $operator = null, $value = null, $boolean = 'and')
+ * @method static updateOrCreate(array $attributes, array $values = [])
+ *
+ * @method static Builder|static query()
+ * @method static Builder|static select($columns = ['*'])
+ * @method static Builder|static selectRaw(string $expression, array $bindings = [])
+ * @method static Builder|static orderBy($column, string $direction = 'asc')
+ * @method static Builder|static where($column, $operator = null, $value = null, string $boolean = 'and')
+ * @method static Builder|static whereNotIn(string $column, $values, string $boolean = 'and')
+ * @method static Builder|static whereBelongsTo(\Illuminate\Database\Eloquent\Model|\Illuminate\Database\Eloquent\Collection<\Illuminate\Database\Eloquent\Model> $related, string|null $relationshipName = null, string $boolean = 'and')
+ * @method static Builder|static orWhereBelongsTo(\Illuminate\Database\Eloquent\Model|\Illuminate\Database\Eloquent\Collection<\Illuminate\Database\Eloquent\Model> $related, string|null $relationshipName = null)
+ * @method static Builder|static whereIn(string $column, $values, string $boolean = 'and', bool $not = false)
+ *
+ * @method static static make(array $attributes = [])
+ * @method static static create(array $attributes = [])
+ * @method static static forceCreate(array $attributes)
+ * @method static static findOrFail($id, $columns = ['*'])
+ * @method static static findOrNew($id, $columns = ['*'])
+ * @method static static firstOrNew(array $attributes = [], array $values = [])
+ * @method static static firstOrFail($columns = ['*'])
+ * @method static static firstOrCreate(array $attributes, array $values = [])
+ * @method static static firstOr($columns = ['*'], \Closure $callback = null)
+ * @method static static firstWhere($column, $operator = null, $value = null, $boolean = 'and')
+ * @method static static updateOrCreate(array $attributes, array $values = [])
+ * @method static \Illuminate\Database\Eloquent\Collection|static[] get($columns = ['*'])
+ * @method static \Illuminate\Support\Collection|static[] pluck(string|\Illuminate\Contracts\Database\Query\Expression $column, string|null $key = null)
+ * @method static static|null find($id, $columns = ['*'])
+ * @method static static|null first($columns = ['*'])
+ * @method static int count(string $columns = '*')
+ *
+ * @method static Builder|static customOrderBy(string $column, ?string $direction = 'asc')
+ */
 abstract class BaseModel extends Model
 {
     private $columns;
 
-    protected $orderField;
-    protected $orderDirection;
+    protected $validation;
 
-    protected $allowedSearchFields = [];
-    protected $searchField;
-    protected $searchTerm;
+    protected const EXTRA_CHARS = "-_.' ÇçàÀâÂäÄåÅèÈéÉêÊëËíÍìÌîÎïÏòÒóÓôÔöÖðÐõÕøØúÚùÙûÛüÜýÝÿŸŷŶøØæÆœŒñÑßÞ";
 
-    protected $fillable;
+    // ------------------------------------------------------
+    // -
+    // -    Méthodes liées à une "entity"
+    // -
+    // ------------------------------------------------------
 
-    protected $dates = [
-        'created_at',
-        'updated_at',
-        'deleted_at',
-    ];
-
-    public $validation;
-
-    const EXTRA_CHARS = "-_.' ÇçàÀâÂäÄåÅèÈéÉêÊëËíÍìÌîÎïÏòÒóÓôÔöÖðÐõÕøØúÚùÙûÛüÜýÝÿŸŷŶøØæÆœŒñÑßÞ";
-
-    public function __construct(array $attributes = [])
+    public function edit(array $data): static
     {
-        Config::getCapsule();
+        $this->fill($data)->save();
 
-        parent::__construct($attributes);
-    }
-
-    // ——————————————————————————————————————————————————————
-    // —
-    // —    Getters
-    // —
-    // ——————————————————————————————————————————————————————
-
-    public function getAll(bool $withDeleted = false): Builder
-    {
-        $builder = $this->_getOrderBy();
-
-        if (!empty($this->searchTerm)) {
-            $builder = $this->_setSearchConditions($builder);
-        }
-
-        if ($withDeleted) {
-            $builder = $builder->onlyTrashed();
-        }
-
-        return $builder;
-    }
-
-    public function getAllFiltered(array $conditions, bool $withDeleted = false): Builder
-    {
-        $builder = static::where($conditions);
-
-        if (!empty($this->searchTerm)) {
-            $builder = $this->_setSearchConditions($builder);
-        }
-
-        if ($withDeleted) {
-            $builder = $builder->onlyTrashed();
-        }
-
-        return $this->_getOrderBy($builder);
+        return $this->refresh();
     }
 
     // ------------------------------------------------------
     // -
-    // -    Setters
+    // -    Méthodes de "repository"
     // -
     // ------------------------------------------------------
 
-    public function setOrderBy(?string $orderBy = null, bool $ascending = true): BaseModel
+    public static function new(array $data): static
     {
-        if ($orderBy) {
-            $this->orderField = $orderBy;
-        }
-        $this->orderDirection = $ascending ? 'asc' : 'desc';
-        return $this;
+        // @phpstan-ignore-next-line
+        return (new static())->edit($data);
     }
 
-    public function setSearch(?string $term = null, $fields = null): BaseModel
-    {
-        if (empty($term)) {
-            return $this;
-        }
-
-        if ($fields) {
-            $fields = !is_array($fields) ? explode('|', $fields) : $fields;
-            foreach ($fields as $field) {
-                if (!in_array($field, $this->getAllowedSearchFields())) {
-                    throw new \InvalidArgumentException("Search field « $field » not allowed.");
-                }
-                $this->searchField = $field;
-            }
-        }
-
-        $this->searchTerm = trim($term);
-        return $this;
-    }
-
-    public function addSearch(string $term, ?array $fields = null): Builder
-    {
-        if (!$term) {
-            throw new \InvalidArgumentException();
-        }
-
-        $trimmedTerm = trim($term);
-        if (strlen($trimmedTerm) < 2) {
-            throw new \InvalidArgumentException();
-        }
-
-        $safeTerm = sprintf('%%%s%%', addcslashes($trimmedTerm, '%_'));
-
-        if (empty($fields)) {
-            return $this->where($this->searchField, 'LIKE', $safeTerm);
-        }
-
-        $query = $this;
-        foreach ($fields as $field) {
-            $query = $query->orWhere($field, 'LIKE', $safeTerm);
-        }
-
-        return $query;
-    }
-
-    // ——————————————————————————————————————————————————————
-    // —
-    // —    "Repository" methods
-    // —
-    // ——————————————————————————————————————————————————————
-
-    public static function new(array $data = []): BaseModel
-    {
-        // TODO: Migrer les éventuels overwrites de la méthode legacy dans les modèles.
-        //       puis déplacer l'implémentation depuis la methode legacy vers cette méthode.
-        return static::staticEdit(null, $data);
-    }
-
-    public static function staticEdit($id = null, array $data = []): BaseModel
-    {
-        // TODO: Migrer les éventuels overwrites de la méthode legacy dans les modèles.
-        //       puis déplacer l'implémentation depuis la methode legacy vers cette méthode.
-        return (new static)->edit($id, $data);
-    }
-
-    public static function staticRemove($id, array $options = []): ?BaseModel
-    {
-        // TODO: Migrer les éventuels overwrites de la méthode legacy dans les modèles.
-        //       puis déplacer l'implémentation depuis la methode legacy vers cette méthode.
-        return (new static)->remove($id, $options);
-    }
-
-    public static function staticUnremove($id): BaseModel
-    {
-        // TODO: Migrer les éventuels overwrites de la méthode legacy dans les modèles.
-        //       puis déplacer l'implémentation depuis la methode legacy vers cette méthode.
-        return (new static)->unremove($id);
-    }
-
-    /** @deprecated Veuillez utiliser `new` ou `staticEdit`. */
-    public function edit($id = null, array $data = []): BaseModel
-    {
-        if ($id && !static::staticExists($id)) {
-            throw (new ModelNotFoundException)
-                ->setModel(get_class($this), $id);
-        }
-
-        $data = cleanEmptyFields($data);
-        $data = $this->_trimStringFields($data);
-
-        try {
-            $model = static::firstOrNew(compact('id'));
-            $model->fill($data)->validate()->save();
-        } catch (QueryException $e) {
-            throw (new ValidationException)
-                ->setPDOValidationException($e);
-        }
-
-        return $model->refresh();
-    }
-
-    /** @deprecated Veuillez utiliser `staticRemove`. */
-    public function remove($id, array $options = []): ?BaseModel
-    {
-        $options = array_merge(['force' => false], $options);
-
-        $entity = static::withTrashed()->findOrFail($id);
-        if ($entity->trashed() || $options['force'] === true) {
-            if (!$entity->forceDelete()) {
-                throw new \RuntimeException(sprintf("Unable to destroy the record %d.", $id));
-            }
-            return null;
-        }
-
-        if (!$entity->delete()) {
-            throw new \RuntimeException(sprintf("Unable to delete the record %d.", $id));
-        }
-
-        return $entity;
-    }
-
-    /** @deprecated Veuillez utiliser `staticUnremove`. */
-    public function unremove($id): BaseModel
-    {
-        $entity = static::onlyTrashed()->findOrFail($id);
-        if (!$entity->restore()) {
-            throw new \RuntimeException(sprintf("Unable to restore the record %d.", $id));
-        }
-        return $entity;
-    }
-
-    // ——————————————————————————————————————————————————————
-    // —
-    // —    Other useful methods
-    // —
-    // ——————————————————————————————————————————————————————
-
-    public static function staticExists($id): bool
-    {
-        // TODO: Migrer les éventuels overwrites de la méthode legacy dans les modèles.
-        //       puis déplacer l'implémentation depuis la methode legacy vers cette méthode.
-        return (new static)->exists($id);
-    }
-
-    /** @deprecated Veuillez utiliser `staticExists`. */
-    public function exists($id): bool
+    public static function includes($id): bool
     {
         return static::where('id', $id)->exists();
     }
 
-    public function validate(): self
-    {
-        $rules = $this->validation;
-        if (empty($rules)) {
-            throw new \RuntimeException("Validation rules cannot be empty.");
-        }
+    // ------------------------------------------------------
+    // -
+    // -    Overwritten methods
+    // -
+    // ------------------------------------------------------
 
-        // - Récupère les attributs du modèle, castés (sauf les données tout juste ajoutées).
-        $data = $this->addCastAttributesToArray(
-            $this->getAttributes(),
-            array_keys($this->getDirty())
+    public function fill(array $attributes)
+    {
+        $data = array_map(
+            static function ($value) {
+                $value = is_string($value) ? trim($value) : $value;
+                return $value === '' ? null : $value;
+            },
+            $attributes,
         );
 
-        foreach ($data as $field => $value) {
-            if (is_array($value)) {
-                unset($data[$field]);
-            }
+        return parent::fill($data);
+    }
+
+    public function save(array $options = [])
+    {
+        if ($options['validate'] ?? true) {
+            $this->validate();
         }
 
-        // - Validation
-        $errors = [];
-        foreach ($rules as $field => $rule) {
-            try {
-                $rule->setName($field)->assert($data[$field] ?? null);
-            } catch (NestedValidationException $e) {
-                $errors[$field] = $e->getMessages();
-            }
-        }
+        unset($options['validate']);
+        return parent::save($options);
+    }
 
-        if (count($errors) > 0) {
-            throw (new ValidationException)
-                ->setValidationErrors($errors);
+    public function syncChanges()
+    {
+        $this->changes = [];
+        foreach (array_keys($this->getAttributes()) as $key) {
+            if (!$this->originalIsEquivalent($key)) {
+                $this->changes[$key] = $this->getRawOriginal($key);
+            }
         }
 
         return $this;
+    }
+
+    public function getPrevious($key = null, $default = null)
+    {
+        $previousAttributes = array_replace($this->original, $this->changes);
+
+        // @phpstan-ignore new.static (même implémentation que `static::getOriginal()`)
+        return (new static())
+            ->setRawAttributes($previousAttributes, true)
+            ->getOriginalWithoutRewindingModel($key, $default);
+    }
+
+    public function __isset($key)
+    {
+        // NOTE: En temps normal, `isset($model)` retourne `true` uniquement si
+        //       l'attribut existe et qu'il est non `null`. De notre côté on on
+        //       considère que même s'il est `null`, l'attribut existe bien au
+        //       niveau du modèle (ceci pour améliorer la prise en charge dans
+        //       Twig, sans quoi il tente de passer par une méthode avec le même
+        //       nom que l'attribut et se retrouve à retourner des relations).
+        try {
+            $this->getAttribute($key);
+            return true;
+        } catch (MissingAttributeException) {
+            return false;
+        }
+    }
+
+    public function toArray()
+    {
+        return $this->attributesToArray();
+    }
+
+    protected function mutateAttributeForArray($key, $value)
+    {
+        $value = parent::mutateAttributeForArray($key, $value);
+
+        $serialize = static function ($value) use (&$serialize) {
+            if ($value instanceof Decimal) {
+                return (string) $value;
+            }
+
+            if (is_array($value)) {
+                return array_map(
+                    static fn ($subValue) => $serialize($subValue),
+                    $value,
+                );
+            }
+
+            return $value;
+        };
+
+        return $serialize($value);
+    }
+
+    // ------------------------------------------------------
+    // -
+    // -    Other useful methods
+    // -
+    // ------------------------------------------------------
+
+    public function getOrderableColumns(): array
+    {
+        if (property_exists($this, 'orderable')) {
+            return $this->orderable;
+        }
+
+        $orderable = [$this->getKey()];
+        if (in_array('name', $this->getTableColumns(), true)) {
+            array_unshift($orderable, 'name');
+        }
+
+        return $orderable;
+    }
+
+    public function getDefaultOrderColumn(): string|null
+    {
+        return Arr::first($this->getOrderableColumns());
     }
 
     public function getTableColumns(): array
@@ -289,12 +222,112 @@ abstract class BaseModel extends Model
         return $this->columns;
     }
 
-    public function getAllowedSearchFields(): array
+    public function getAttributeUnsafeValue($key)
     {
-        return array_unique(array_merge(
-            (array)$this->searchField,
-            (array)$this->allowedSearchFields
-        ));
+        return $this->isDirty($key)
+            ? $this->getAttributeFromArray($key)
+            : $this->getAttributeValue($key);
+    }
+
+    // ------------------------------------------------------
+    // -
+    // -    Validation related
+    // -
+    // ------------------------------------------------------
+
+    public function validationErrors(): array
+    {
+        /** @var array<string, \Respect\Validation\Rules\AbstractRule> $rules */
+        $rules = $this->validation;
+        if (empty($rules)) {
+            throw new \RuntimeException("Validation rules cannot be empty.");
+        }
+
+        // - Récupère les attributs du modèle, castés (sauf les données tout juste ajoutées).
+        $data = $this->addCastAttributesToArray(
+            $this->getAttributes(),
+            array_keys($this->getDirty()),
+        );
+
+        foreach ($data as $field => $value) {
+            if (is_array($value) && Arr::isAssoc($value)) {
+                unset($data[$field]);
+            }
+        }
+
+        $getFormattedErrorMessage = static function (NestedValidationException $exception) {
+            $messages = $exception->getMessages();
+            if (count($messages) === 1) {
+                return current($messages);
+            }
+
+            $rootException = iterator_to_array($exception)[0] ?? null;
+            if ($rootException !== null) {
+                switch (get_class($rootException)) {
+                    case NotEmptyException::class:
+                        return current($messages);
+
+                    case OneOfException::class:
+                    case AnyOfException::class:
+                        return implode("\n", [
+                            array_shift($messages),
+                            ...array_map(
+                                static fn ($message) => sprintf('- %s', $message),
+                                $messages,
+                            ),
+                        ]);
+
+                    case AllOfException::class:
+                        $messages = array_slice($messages, 1);
+                        break;
+                }
+            }
+
+            return implode("\n", array_map(
+                static fn ($message) => sprintf('- %s', $message),
+                $messages,
+            ));
+        };
+
+        // - Validation
+        $errors = [];
+        foreach ($rules as $field => $rule) {
+            try {
+                $rule->setName($field)->assert($data[$field] ?? null);
+            } catch (NestedValidationException $e) {
+                $errors[$field] = $getFormattedErrorMessage($e);
+            }
+        }
+
+        return $errors;
+    }
+
+    public function isValid(): bool
+    {
+        return count($this->validationErrors()) === 0;
+    }
+
+    public function validate(): static
+    {
+        $errors = $this->validationErrors();
+        if (count($errors) > 0) {
+            throw new ValidationException($errors);
+        }
+        return $this;
+    }
+
+    // ------------------------------------------------------
+    // -
+    // -    Query Scopes
+    // -
+    // ------------------------------------------------------
+
+    public function scopeCustomOrderBy(Builder $query, string $column, string $direction = 'asc'): Builder
+    {
+        if (!in_array($column, $this->getTableColumns(), true)) {
+            throw new \InvalidArgumentException("Invalid order field.");
+        }
+        return $query->orderBy($column, $direction);
     }
 
     // ------------------------------------------------------
@@ -303,50 +336,12 @@ abstract class BaseModel extends Model
     // -
     // ------------------------------------------------------
 
-    protected function _getOrderBy(?Builder $builder = null): Builder
+    public function jsonSerialize(): mixed
     {
-        $direction = $this->orderDirection ?: 'asc';
-
-        $order = $this->orderField;
-        if (!$order) {
-            $order = in_array('name', $this->getTableColumns()) ? 'name' : 'id';
+        if (method_exists($this, 'serialize')) {
+            return $this->serialize();
         }
-
-        if ($builder) {
-            return $builder->orderBy($order, $direction);
-        }
-
-        return static::orderBy($order, $direction);
-    }
-
-    protected function _setSearchConditions(Builder $builder): Builder
-    {
-        if (!$this->searchField || !$this->searchTerm) {
-            return $builder;
-        }
-
-        $term = sprintf('%%%s%%', addcslashes($this->searchTerm, '%_'));
-
-        if (is_array($this->searchField)) {
-            $group = function (Builder $query) use ($term) {
-                foreach ($this->searchField as $field) {
-                    $query->orWhere($field, 'LIKE', $term);
-                }
-            };
-            return $builder->where($group);
-        }
-
-        return $builder->where($this->searchField, 'LIKE', $term);
-    }
-
-    protected function _trimStringFields(array $data): array
-    {
-        $trimmedData = [];
-        foreach ($data as $field => $value) {
-            $isString = array_key_exists($field, $this->casts) && $this->casts[$field] === 'string';
-            $trimmedData[$field] = ($isString && $value) ? trim($value) : $value;
-        }
-        return $trimmedData;
+        return parent::jsonSerialize();
     }
 
     // @see https://laravel.com/docs/8.x/eloquent-serialization#customizing-the-default-date-format

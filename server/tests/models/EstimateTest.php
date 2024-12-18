@@ -1,221 +1,356 @@
 <?php
 declare(strict_types=1);
 
-namespace Robert2\Tests;
+namespace Loxya\Tests;
 
-use Illuminate\Database\Eloquent\ModelNotFoundException;
-use Robert2\API\Models;
+use Brick\Math\BigDecimal as Decimal;
+use Illuminate\Support\Carbon;
+use Loxya\Models\Beneficiary;
+use Loxya\Models\Estimate;
+use Loxya\Models\Event;
+use Loxya\Models\User;
+use Loxya\Services\I18n;
+use Loxya\Support\Pdf\Pdf;
+use Loxya\Support\Period;
 
-final class EstimateTest extends ModelTestCase
+final class EstimateTest extends TestCase
 {
-    public function setup(): void
+    public function testValidation(): void
     {
-        parent::setUp();
-
-        $this->model = new Models\Estimate();
-    }
-
-    public function testTableName(): void
-    {
-        $this->assertEquals('estimates', $this->model->getTable());
-    }
-
-    public function testGetAll(): void
-    {
-        $result = $this->model->getAll()->get()->toArray();
-        $this->assertCount(1, $result);
-    }
-
-    public function testGetEvent()
-    {
-        $result = $this->model::find(1)->event->toArray();
-        $expected = [
-            'id' => 1,
-            'title' => 'Premier événement',
-            'location' => 'Gap',
-            'start_date' => '2018-12-17 00:00:00',
-            'end_date' => '2018-12-18 23:59:59',
+        $estimate = new Estimate([
+            'date' => '',
+            'booking_start_date' => null,
+            'booking_end_date' => null,
+            'total_without_taxes' => '1000000000000.00',
+            'total_replacement' => '-20.00',
+            'currency' => 'a',
+        ]);
+        $estimate->booking()->associate(Event::findOrFail(1));
+        $estimate->beneficiary()->associate(Beneficiary::findOrFail(1));
+        $expectedErrors = [
+            'date' => "Ce champ est obligatoire.",
+            'total_replacement' => "Ce champ est invalide.",
+            'currency' => 'Ce champ est invalide.',
+            'booking_start_date' => "Ce champ est obligatoire.",
+            'booking_end_date' => "Ce champ est obligatoire.",
+            'booking_is_full_days' => "Ce champ doit être un booléen.",
+            'total_without_global_discount' => "Ce champ doit contenir un chiffre à virgule.",
+            'global_discount_rate' => "Ce champ doit contenir un chiffre à virgule.",
+            'total_global_discount' => "Ce champ doit contenir un chiffre à virgule.",
+            'total_without_taxes' => "Ce champ est invalide.",
+            'total_with_taxes' => "Ce champ doit contenir un chiffre à virgule.",
         ];
-        $this->assertEquals($expected, $result);
+        $this->assertFalse($estimate->isValid());
+        $this->assertSameCanonicalize($expectedErrors, $estimate->validationErrors());
+
+        // - Test de validation du taux de remise.
+        $estimate = new Estimate([
+            'date' => '2024-01-19 16:00:00',
+            'booking_period' => new Period('2018-12-17', '2018-12-18', true),
+            'total_without_global_discount' => '1750.00',
+            'global_discount_rate' => '100.00',
+            'total_global_discount' => '1750.00',
+            'total_without_taxes' => '0.00',
+            'total_taxes' => [],
+            'total_with_taxes' => '0.00',
+            'currency' => 'EUR',
+            'total_replacement' => '2000.00',
+        ]);
+        $estimate->booking()->associate(Event::findOrFail(1));
+        $estimate->beneficiary()->associate(Beneficiary::findOrFail(1));
+        $this->assertTrue($estimate->isValid());
     }
 
-    public function testGetBeneficiary()
+    public function testCreateFromEvent(): void
     {
-        $result = $this->model::find(1)->beneficiary->toArray();
+        Carbon::setTestNow(Carbon::create(2022, 10, 22, 18, 42, 36));
+
+        // - Avec un événement au jour entier.
+        $event = tap(Event::findOrFail(2), static function ($event) {
+            $event->global_discount_rate = Decimal::of('1.3923');
+        });
+        $result = Estimate::createFromBooking($event, User::findOrFail(1));
         $expected = [
             'id' => 3,
-            'first_name' => "Client",
-            'last_name' => "Benef",
-            'street' => "156 bis, avenue des tests poussés",
-            'postal_code' => "88080",
-            'locality' => "Wazzaville",
-            'full_name' => "Client Benef",
-            'company' => null,
-            'country' => null,
-        ];
-        $this->assertEquals($expected, $result);
-    }
-
-    public function testGetUser()
-    {
-        $result = $this->model::find(1)->user->toArray();
-        $expected = [
-            'id'  => 1,
-            'pseudo' => 'test1',
-            'email' => 'tester@robertmanager.net',
-            'group_id' => 'admin',
-            'person' => [
-                'id' => 1,
-                'user_id' => 1,
-                'first_name' => 'Jean',
-                'last_name' => 'Fountain',
-                'reference' => '0001',
-                'nickname' => null,
-                'email' => 'tester@robertmanager.net',
-                'phone' => null,
-                'street' => '1, somewhere av.',
-                'postal_code' => '1234',
-                'locality' => 'Megacity',
-                'country_id' => 1,
-                'company_id' => 1,
-                'note' => null,
-                'created_at' => null,
-                'updated_at' => null,
-                'deleted_at' => null,
-                'full_name' => 'Jean Fountain',
-                'company' => [
-                    'id' => 1,
-                    'legal_name' => 'Testing, Inc',
-                    'street' => '1, company st.',
-                    'postal_code' => '1234',
-                    'locality' => 'Megacity',
-                    'country_id' => 1,
-                    'phone' => '+4123456789',
-                    'note' => 'Just for tests',
-                    'created_at' => null,
-                    'updated_at' => null,
-                    'deleted_at' => null,
-                    'country' => [
-                        'id' => 1,
-                        'name' => 'France',
-                        'code' => 'FR',
-                    ],
-                ],
-                'country' => [
-                    'id' => 1,
-                    'name' => 'France',
-                    'code' => 'FR',
-                ],
-            ],
-        ];
-        $this->assertEquals($expected, $result);
-    }
-
-    public function testGetMaterials()
-    {
-        $result = $this->model::find(1)->materials;
-        $expected = [
-            [
-                'id' => 1,
-                'name' => "Console Yamaha CL3",
-                'reference' => "PM5D",
-                'park_id' => 1,
-                'category_id' => 1,
-                'sub_category_id' => 1,
-                'rental_price' => 300.0,
-                'stock_quantity' => 5,
-                'out_of_order_quantity' => 1,
-                'replacement_price' => 19400.0,
-                'is_hidden_on_bill' => false,
-                'is_discountable' => false,
-            ],
-            [
-                'id' => 2,
-                'name' => "Processeur DBX PA2",
-                'reference' => "DBXPA2",
-                'park_id' => 1,
-                'category_id' => 1,
-                'sub_category_id' => 2,
-                'rental_price' => 25.5,
-                'stock_quantity' => 2,
-                'out_of_order_quantity' => null,
-                'replacement_price' => 349.9,
-                'is_hidden_on_bill' => false,
-                'is_discountable' => true,
-            ],
-        ];
-        $this->assertEquals($expected, $result);
-    }
-
-    public function testCreateFromEventNotFound()
-    {
-        $this->expectException(ModelNotFoundException::class);
-        $this->model->createFromEvent(999, 1, 25);
-    }
-
-    public function testCreateFromEvent()
-    {
-        $result = $this->model->createFromEvent(2, 1, 25.9542);
-        $expected = [
-            'id' => 2,
-            'date' => 'fakedTestContent',
-            'event_id' => 2,
+            'date' => '2022-10-22 18:42:36',
+            'url' => 'http://loxya.test/estimates/3/pdf',
+            'booking_type' => Event::TYPE,
+            'booking_id' => 2,
+            'booking_title' => 'Second événement',
+            'booking_start_date' => '2018-12-18 00:00:00',
+            'booking_end_date' => '2018-12-20 00:00:00',
+            'booking_is_full_days' => true,
             'beneficiary_id' => 3,
+
+            'is_legacy' => false,
+            'degressive_rate' => null,
+            'daily_total' => null,
+
             'materials' => [
                 [
-                    'id' => 2,
+                    'id' => 7,
+                    'estimate_id' => 3,
+                    'material_id' => 2,
                     'name' => 'Processeur DBX PA2',
                     'reference' => 'DBXPA2',
-                    'park_id' => 1,
-                    'category_id' => 1,
-                    'sub_category_id' => 2,
-                    'rental_price' => 25.5,
-                    'replacement_price' => 349.9,
-                    'is_hidden_on_bill' => false,
-                    'is_discountable' => true,
                     'quantity' => 2,
+                    'unit_price' => '25.50',
+                    'degressive_rate' => '1.75',
+                    'unit_price_period' => '44.63',
+                    'total_without_discount' => '89.26',
+                    'discount_rate' => '10.0000',
+                    'total_discount' => '8.93',
+                    'total_without_taxes' => '80.33',
+                    'taxes' => [
+                        [
+                            'name' => 'T.V.A.',
+                            'is_rate' => true,
+                            'value' => '20.000',
+                        ],
+                    ],
+                    'unit_replacement_price' => '349.90',
+                    'total_replacement_price' => '699.80',
+                    'is_hidden_on_bill' => false,
                 ],
                 [
-                    'id' => 1,
-                    'name' => 'Console Yamaha CL3',
-                    'reference' => 'CL3',
-                    'park_id' => 1,
-                    'category_id' => 1,
-                    'sub_category_id' => 1,
-                    'rental_price' => 300,
-                    'replacement_price' => 19400,
+                    'id' => 8,
+                    'estimate_id' => 3,
+                    'material_id' => 1,
+                    'name' => 'Yamaha CL3',
+                    'reference' => 'CL-3',
+                    'quantity' => 3,
+                    'unit_price' => '300.00',
+                    'degressive_rate' => '2.00',
+                    'unit_price_period' => '600.00',
+                    'total_without_discount' => '1800.00',
+                    'discount_rate' => '0.0000',
+                    'total_discount' => '0.00',
+                    'total_without_taxes' => '1800.00',
+                    'taxes' => [
+                        [
+                            'name' => 'T.V.A.',
+                            'is_rate' => true,
+                            'value' => '20.000',
+                        ],
+                    ],
+                    'unit_replacement_price' => '19400.00',
+                    'total_replacement_price' => '58200.00',
                     'is_hidden_on_bill' => false,
-                    'is_discountable' => false,
-                    'quantity' => 3
                 ],
             ],
-            'degressive_rate' => 1.75,
-            'discount_rate' => 25.9542,
-            'vat_rate' => 20.0,
-            'due_amount' => 1641.09,
-            'replacement_amount' => 58899.8,
-            'currency' => 'EUR',
-            'user_id' => 1,
-            'created_at' => 'fakedTestContent',
-            'updated_at' => 'fakedTestContent',
-        ];
-        $safeResult = $result->toArray();
-        foreach (['date', 'created_at', 'updated_at'] as $field) {
-            $safeResult[$field] = 'fakedTestContent';
-        }
-        $this->assertEquals($expected, $safeResult);
-    }
+            'extras' => [
+                [
+                    'id' => 2,
+                    'estimate_id' => 3,
+                    'description' => "Services additionnels",
+                    'quantity' => 2,
+                    'unit_price' => '155.00',
+                    'total_without_taxes' => '310.00',
+                    'taxes' => [
+                        [
+                            'name' => "Taxes diverses",
+                            'is_rate' => false,
+                            'value' => '10.00',
+                        ],
+                    ],
+                ],
+                [
+                    'id' => 3,
+                    'estimate_id' => 3,
+                    'description' => "Avoir facture du 17/12/2018",
+                    'quantity' => 1,
+                    'unit_price' => '-3100.00',
+                    'total_without_taxes' => '-3100.00',
+                    'taxes' => [],
+                ],
+            ],
 
-    public function testGetPdfName()
-    {
-        $result = $this->model->getPdfName(1);
-        $expected = 'TEST-Devis-Testing_corp.-20210130-1400-Client_Benef.pdf';
+            // - Remise.
+            'total_without_global_discount' => '-909.67',
+            'global_discount_rate' => '1.3923',
+            'total_global_discount' => '0.00',
+
+            // - Totaux.
+            'total_without_taxes' => '-909.67',
+            'total_taxes' => [
+                [
+                    'name' => 'T.V.A.',
+                    'is_rate' => true,
+                    'value' => '20.000',
+                    'total' => '370.83',
+                ],
+                [
+                    'name' => "Taxes diverses",
+                    'is_rate' => false,
+                    'value' => '10.00',
+                    'total' => '20.00',
+                ],
+            ],
+            'total_with_taxes' => '-518.84',
+
+            'total_replacement' => '58899.80',
+            'currency' => 'EUR',
+            'author_id' => 1,
+            'created_at' => '2022-10-22 18:42:36',
+            'updated_at' => '2022-10-22 18:42:36',
+            'deleted_at' => null,
+        ];
+
+        $result = $result->append(['materials', 'extras'])->toArray();
+        $result['total_taxes'] = $result['total_taxes'] === null ? null : (
+            array_map(
+                static fn ($tax) => array_replace($tax, [
+                    'value' => (string) $tax['value'],
+                    'total' => (string) $tax['total'],
+                ]),
+                $result['total_taxes'],
+            )
+        );
+        $this->assertEquals($expected, $result);
+
+        // - Avec un événement à l'heure près.
+        $result = Estimate::createFromBooking(Event::findOrFail(1), User::findOrFail(2));
+        $expected = [
+            'id' => 4,
+            'url' => 'http://loxya.test/estimates/4/pdf',
+            'date' => '2022-10-22 18:42:36',
+            'booking_type' => Event::TYPE,
+            'booking_id' => 1,
+            'booking_title' => 'Premier événement',
+            'booking_start_date' => '2018-12-17 10:00:00',
+            'booking_end_date' => '2018-12-18 18:00:00',
+            'booking_is_full_days' => false,
+            'beneficiary_id' => 1,
+            'is_legacy' => false,
+            'degressive_rate' => null,
+            'daily_total' => null,
+            'materials' => [
+                [
+                    'id' => 9,
+                    'estimate_id' => 4,
+                    'material_id' => 1,
+                    'name' => 'Console Yamaha CL3',
+                    'reference' => 'CL3',
+                    'quantity' => 1,
+                    'unit_price' => '200.00',
+                    'degressive_rate' => '1.75',
+                    'unit_price_period' => '350.00',
+                    'total_without_discount' => '350.00',
+                    'discount_rate' => '0.0000',
+                    'total_discount' => '0.00',
+                    'total_without_taxes' => '350.00',
+                    'taxes' => [
+                        [
+                            'name' => 'T.V.A.',
+                            'is_rate' => true,
+                            'value' => '20.000',
+                        ],
+                    ],
+                    'unit_replacement_price' => '19000.00',
+                    'total_replacement_price' => '19000.00',
+                    'is_hidden_on_bill' => false,
+                ],
+                [
+                    'id' => 10,
+                    'estimate_id' => 4,
+                    'material_id' => 2,
+                    'name' => 'DBX PA2',
+                    'reference' => 'DBXPA2',
+                    'quantity' => 1,
+                    'unit_price' => '25.50',
+                    'degressive_rate' => '1.75',
+                    'unit_price_period' => '44.63',
+                    'total_without_discount' => '44.63',
+                    'discount_rate' => '0.0000',
+                    'total_discount' => '0.00',
+                    'total_without_taxes' => '44.63',
+                    'taxes' => [
+                        [
+                            'name' => 'T.V.A.',
+                            'is_rate' => true,
+                            'value' => '20.000',
+                        ],
+                    ],
+                    'unit_replacement_price' => '349.90',
+                    'total_replacement_price' => '349.90',
+                    'is_hidden_on_bill' => false,
+                ],
+                [
+                    'id' => 11,
+                    'estimate_id' => 4,
+                    'material_id' => 4,
+                    'name' => 'Showtec SDS-6',
+                    'reference' => 'SDS-6-01',
+                    'quantity' => 1,
+                    'unit_price' => '15.95',
+                    'degressive_rate' => '1.75',
+                    'unit_price_period' => '27.91',
+                    'total_without_discount' => '27.91',
+                    'discount_rate' => '0.0000',
+                    'total_discount' => '0.00',
+                    'total_without_taxes' => '27.91',
+                    'taxes' => [
+                        [
+                            'name' => 'T.V.A.',
+                            'is_rate' => true,
+                            'value' => '20.000',
+                        ],
+                    ],
+                    'unit_replacement_price' => '59.00',
+                    'total_replacement_price' => '59.00',
+                    'is_hidden_on_bill' => false,
+                ],
+            ],
+            'extras' => [],
+
+            // - Remise.
+            'total_without_global_discount' => '422.54',
+            'global_discount_rate' => '10.0000',
+            'total_global_discount' => '42.25',
+
+            // - Totaux.
+            'total_without_taxes' => '380.29',
+            'total_taxes' => [
+                [
+                    'name' => 'T.V.A.',
+                    'is_rate' => true,
+                    'value' => '20.000',
+                    'total' => '76.06',
+                ],
+            ],
+            'total_with_taxes' => '456.35',
+
+            'total_replacement' => '19408.90',
+            'currency' => 'EUR',
+            'author_id' => 2,
+            'created_at' => '2022-10-22 18:42:36',
+            'updated_at' => '2022-10-22 18:42:36',
+            'deleted_at' => null,
+        ];
+        $result = $result->append(['materials', 'extras'])->toArray();
         $this->assertEquals($expected, $result);
     }
 
-    public function testGetPdfContent()
+    public function testToPdf(): void
     {
-        $result = $this->model->getPdfContent(1);
-        $this->assertNotEmpty($result);
+        Carbon::setTestNow(Carbon::create(2022, 10, 22, 18, 42, 36));
+
+        // - Test simple (legacy).
+        $result = Estimate::findOrFail(2)->toPdf(new I18n('fr'));
+        $this->assertInstanceOf(Pdf::class, $result);
+        $this->assertSame('devis-testing-corp-20210130-1400-jean-fountain.pdf', $result->getName());
+        $this->assertMatchesHtmlSnapshot($result->getHtml());
+
+        // - Test simple.
+        $result = Estimate::findOrFail(1)->toPdf(new I18n('fr'));
+        $this->assertInstanceOf(Pdf::class, $result);
+        $this->assertSame('devis-testing-corp-20210130-1400-jean-fountain.pdf', $result->getName());
+        $this->assertMatchesHtmlSnapshot($result->getHtml());
+
+        // - Une événement à l'heure près.
+        $estimate = Estimate::createFromBooking(Event::findOrFail(1), User::findOrFail(2));
+        $result = $estimate->toPdf(new I18n('en'));
+        $this->assertInstanceOf(Pdf::class, $result);
+        $this->assertMatchesHtmlSnapshot($result->getHtml());
     }
 }

@@ -1,0 +1,7 @@
+no-document: No document yet.
+
+upload-in-queue: "In queue..."
+upload-in-progress: "Upload in progress...\_{progress}%"
+upload-in-process: "Upload is being processed..."
+upload-cancelled: "Upload cancelled."
+upload-complete: "Upload complete!"

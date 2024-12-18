@@ -1,41 +1,81 @@
 <?php
 declare(strict_types=1);
 
-namespace Robert2\API\Controllers;
+namespace Loxya\Controllers;
 
-use Robert2\API\Controllers\Traits\WithCrud;
-use Robert2\API\Models\Park;
+use Fig\Http\Message\StatusCodeInterface as StatusCode;
+use Illuminate\Database\Eloquent\Builder;
+use Loxya\Controllers\Traits\WithCrud;
+use Loxya\Http\Request;
+use Loxya\Models\Material;
+use Loxya\Models\Park;
+use Psr\Http\Message\ResponseInterface;
+use Slim\Exception\HttpNotFoundException;
 use Slim\Http\Response;
-use Slim\Http\ServerRequest as Request;
 
-class ParkController extends BaseController
+final class ParkController extends BaseController
 {
     use WithCrud;
 
-    public function getOne(Request $request, Response $response): Response
+    public function getAll(Request $request, Response $response): ResponseInterface
     {
-        $id = (int)$request->getAttribute('id');
+        $search = $request->getStringQueryParam('search');
+        $limit = $request->getIntegerQueryParam('limit');
+        $ascending = $request->getBooleanQueryParam('ascending', true);
+        $onlyDeleted = $request->getBooleanQueryParam('deleted', false);
 
-        $park = Park::findOrFail($id)->append([
-            'has_ongoing_event',
-        ]);
-        return $response->withJson($park);
+        $query = Park::query()
+            ->when(
+                $search !== null && mb_strlen($search) >= 2,
+                static fn (Builder $subQuery) => $subQuery->search($search),
+            )
+            ->when($onlyDeleted, static fn (Builder $subQuery) => (
+                $subQuery->onlyTrashed()
+            ))
+            ->orderBy('name', $ascending ? 'asc' : 'desc');
+
+        $results = $this->paginate($request, $query, $limit);
+        return $response->withJson($results, StatusCode::STATUS_OK);
     }
 
-    public function getList(Request $request, Response $response): Response
+    public function getList(Request $request, Response $response): ResponseInterface
     {
-        $parks = Park::select(['id', 'name']);
-        $results = $parks->get()->each->setAppends([])->toArray();
+        $parks = Park::query()
+            ->orderBy('name')
+            ->get();
 
-        return $response->withJson($results);
+        $data = $parks->map(static fn ($park) => $park->serialize(Park::SERIALIZE_SUMMARY));
+        return $response->withJson($data, StatusCode::STATUS_OK);
     }
 
-    public function getTotalAmount(Request $request, Response $response): Response
+    public function getOneMaterials(Request $request, Response $response): ResponseInterface
     {
-        $id = (int)$request->getAttribute('id');
+        $id = $request->getIntegerAttribute('id');
+        if (!Park::includes($id)) {
+            throw new HttpNotFoundException($request);
+        }
 
-        $park = Park::withTrashed()->findOrFail($id)->append(['total_amount']);
-        $totalAmount = $park->total_amount;
-        return $response->withJson(compact('id', 'totalAmount'));
+        $materials = Material::getParkAll($id);
+        return $response->withJson($materials, StatusCode::STATUS_OK);
+    }
+
+    public function getOneTotalAmount(Request $request, Response $response): ResponseInterface
+    {
+        $id = $request->getIntegerAttribute('id');
+        /** @var Park $park */
+        $park = Park::findOrFail($id);
+
+        return $response->withJson($park->total_amount, StatusCode::STATUS_OK);
+    }
+
+    // ------------------------------------------------------
+    // -
+    // -    Méthodes internes
+    // -
+    // ------------------------------------------------------
+
+    protected static function _formatOne(Park $park): array
+    {
+        return $park->serialize(Park::SERIALIZE_DETAILS);
     }
 }

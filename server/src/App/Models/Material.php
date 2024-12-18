@@ -1,28 +1,115 @@
 <?php
 declare(strict_types=1);
 
-namespace Robert2\API\Models;
+namespace Loxya\Models;
 
+use Brick\Math\BigDecimal as Decimal;
+use Brick\Math\RoundingMode;
+use Carbon\Carbon;
+use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
+use Illuminate\Database\Eloquent\Relations\MorphToMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
-use Robert2\API\Models\Traits\Taggable;
-use Robert2\API\Validation\Validator as V;
+use Illuminate\Support\Collection as CoreCollection;
+use Loxya\Config\Config;
+use Loxya\Config\Enums\BillingMode;
+use Loxya\Contracts\PeriodInterface;
+use Loxya\Contracts\Serializable;
+use Loxya\Errors\Exception\ValidationException;
+use Loxya\Models\Casts\AsDecimal;
+use Loxya\Models\Traits\Serializer;
+use Loxya\Models\Traits\TransientAttributes;
+use Loxya\Support\Arr;
+use Loxya\Support\Assert;
+use Loxya\Support\Database\QueryAggregator;
+use Loxya\Support\Period;
+use Loxya\Support\Str;
+use Psr\Http\Message\UploadedFileInterface;
+use Respect\Validation\Validator as V;
 
-class Material extends BaseModel
+/**
+ * Matériel.
+ *
+ * @property-read ?int $id
+ * @property string $name
+ * @property UploadedFileInterface|string|null $picture
+ * @property-read string|null $picture_real_path
+ * @property string|null $description
+ * @property string $reference
+ * @property int|null $park_id
+ * @property-read Park|null $park
+ * @property int|null $category_id
+ * @property-read Category|null $category
+ * @property int|null $sub_category_id
+ * @property-read SubCategory|null $sub_category
+ * @property-read SubCategory|null $subCategory
+ * @property Decimal|null $rental_price
+ * @property int|null $degressive_rate_id
+ * @property-read DegressiveRate|null $degressive_rate
+ * @property-read DegressiveRate|null $degressiveRate
+ * @property int|null $tax_id
+ * @property-read Tax|null $tax
+ * @property Decimal|null $replacement_price
+ * @property int $stock_quantity
+ * @property int $out_of_order_quantity
+ * @property int $available_quantity
+ * @property bool $is_hidden_on_bill
+ * @property bool $is_discountable
+ * @property-read bool $is_deleted
+ * @property string|null $note
+ * @property-read Event|null $departure_inventory_todo
+ * @property-read Event|null $return_inventory_todo
+ * @property Event|null $context
+ * @property-read Decimal|null $degressive_rate_context
+ * @property-read Decimal|null $rental_price_context
+ * @property-read CarbonImmutable $created_at
+ * @property-read CarbonImmutable|null $updated_at
+ * @property-read CarbonImmutable|null $deleted_at
+ *
+ * @property-read Collection<array-key, Attribute> $attributes
+ * @property-read Collection<array-key, Event> $events
+ * @property-read Collection<array-key, Document> $documents
+ * @property-read Collection<array-key, Tag> $tags
+ *
+ * @method static Builder|static search(string $term)
+ * @method static Builder|static inPark(int $parkId)
+ * @method static Builder|static notInPark(array $parks)
+ */
+final class Material extends BaseModel implements Serializable
 {
+    use Serializer;
     use SoftDeletes;
-    use Taggable;
+    use TransientAttributes;
 
-    protected $searchField = ['name', 'reference'];
+    /** L'identifiant unique du modèle. */
+    public const TYPE = 'material';
+
+    // - Types de sérialisation.
+    public const SERIALIZE_DEFAULT = 'default';
+    public const SERIALIZE_DETAILS = 'details';
+    public const SERIALIZE_PUBLIC = 'public';
+    public const SERIALIZE_WITH_AVAILABILITY = 'with-availability';
+    public const SERIALIZE_WITH_CONTEXT = 'with-context';
+    public const SERIALIZE_WITH_CONTEXT_EXCERPT = 'with-context-excerpt';
+
+    private const PICTURE_BASEPATH = (
+        DATA_FOLDER . DS . 'materials' . DS . 'picture'
+    );
 
     protected $attributes = [
         'name' => null,
         'description' => null,
         'reference' => null,
-        'is_unitary' => false,
         'park_id' => null,
         'category_id' => null,
         'sub_category_id' => null,
         'rental_price' => null,
+        'degressive_rate_id' => null,
+        'tax_id' => null,
         'stock_quantity' => null,
         'out_of_order_quantity' => null,
         'replacement_price' => null,
@@ -38,194 +125,465 @@ class Material extends BaseModel
 
         $this->validation = [
             'name' => V::notEmpty()->length(2, 191),
-            'reference' => V::notEmpty()->alnum('.,-+/_ ')->length(2, 64),
-            'park_id' => V::notEmpty()->numeric(),
-            'category_id' => V::notEmpty()->numeric(),
-            'sub_category_id' => V::optional(V::numeric()),
-            'rental_price' => V::floatVal()->max(999999.99, true),
-            'stock_quantity' => V::intVal()->max(100000),
-            'out_of_order_quantity' => V::optional(V::intVal()->max(100000)),
-            'replacement_price' => V::optional(V::floatVal()->max(999999.99, true)),
-            'is_hidden_on_bill' => V::optional(V::boolType()),
-            'is_discountable' => V::optional(V::boolType()),
-            'picture' => V::optional(V::length(5, 191)),
+            'reference' => V::custom([$this, 'checkReference']),
+            'picture' => V::custom([$this, 'checkPicture']),
+            'park_id' => V::custom([$this, 'checkParkId']),
+            'category_id' => V::custom([$this, 'checkCategoryId']),
+            'sub_category_id' => V::custom([$this, 'checkSubCategoryId']),
+            'rental_price' => V::custom([$this, 'checkRentalPrice']),
+            'degressive_rate_id' => V::custom([$this, 'checkDegressiveRateId']),
+            'tax_id' => V::custom([$this, 'checkTaxId']),
+            'stock_quantity' => V::custom([$this, 'checkStockQuantity']),
+            'out_of_order_quantity' => V::custom([$this, 'checkOutOfOrderQuantity']),
+            'replacement_price' => V::custom([$this, 'checkReplacementPrice']),
+            'is_hidden_on_bill' => V::nullable(V::boolType()),
+            'is_discountable' => V::nullable(V::boolType()),
         ];
     }
 
-    // ——————————————————————————————————————————————————————
-    // —
-    // —    Relations
-    // —
-    // ——————————————————————————————————————————————————————
+    // ------------------------------------------------------
+    // -
+    // -    Validation
+    // -
+    // ------------------------------------------------------
 
-    protected $appends = [
-        'tags',
-        'attributes',
-    ];
-
-    public function Park()
+    public function checkReference($value)
     {
-        return $this->belongsTo('Robert2\API\Models\Park')
-            ->select(['id', 'name']);
+        V::notEmpty()
+            ->alnum('.,-+/_ ')
+            ->length(2, 64)
+            ->check($value);
+
+        $alreadyExists = static::query()
+            ->where('reference', $value)
+            ->when($this->exists, fn (Builder $subQuery) => (
+                $subQuery->where('id', '!=', $this->id)
+            ))
+            ->withTrashed()
+            ->exists();
+
+        return !$alreadyExists ?: 'reference-already-in-use';
     }
 
-    public function Category()
+    public function checkPicture($picture)
     {
-        return $this->belongsTo('Robert2\API\Models\Category')
-            ->select(['id', 'name']);
+        if (empty($picture)) {
+            return true;
+        }
+
+        if (is_string($picture)) {
+            V::length(5, 227)->check($picture);
+            return true;
+        }
+
+        if (!($picture instanceof UploadedFileInterface)) {
+            return false;
+        }
+        /** @var UploadedFileInterface $picture */
+
+        if (in_array($picture->getError(), [UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE], true)) {
+            return 'file-exceeds-max-size';
+        }
+
+        if ($picture->getError() === UPLOAD_ERR_NO_FILE) {
+            return 'no-uploaded-files';
+        }
+
+        if ($picture->getError() !== UPLOAD_ERR_OK) {
+            return 'upload-failed';
+        }
+
+        if ($picture->getSize() > Config::get('maxFileUploadSize')) {
+            return 'file-exceeds-max-size';
+        }
+
+        $pictureType = $picture->getClientMediaType();
+        if (!in_array($pictureType, Config::get('authorizedImageTypes'), true)) {
+            return 'file-type-not-allowed';
+        }
+
+        return true;
     }
 
-    public function SubCategory()
+    public function checkParkId($value)
     {
-        return $this->belongsTo('Robert2\API\Models\SubCategory')
-            ->select(['id', 'name', 'category_id']);
+        V::notEmpty()->intVal()->check($value);
+
+        $park = Park::withTrashed()->find($value);
+        if (!$park) {
+            return false;
+        }
+
+        return !$this->exists || $this->isDirty('park_id')
+            ? !$park->trashed()
+            : true;
     }
 
-    public function Attributes()
+    public function checkCategoryId($value)
     {
-        return $this->belongsToMany('Robert2\API\Models\Attribute', 'material_attributes')
-            ->using('Robert2\API\Models\MaterialAttributesPivot')
+        V::nullable(V::intVal())->check($value);
+        return $value === null || Category::includes($value);
+    }
+
+    public function checkSubCategoryId($value)
+    {
+        V::nullable(V::intVal())->check($value);
+        return $value === null || SubCategory::includes($value);
+    }
+
+    public function checkStockQuantity()
+    {
+        return V::intVal()->max(100_000);
+    }
+
+    public function checkOutOfOrderQuantity()
+    {
+        return V::nullable(V::intVal()->max(100_000));
+    }
+
+    public function checkRentalPrice($value)
+    {
+        $billingMode = Config::get('billingMode');
+        if ($billingMode === BillingMode::NONE) {
+            return V::nullType();
+        }
+
+        V::floatVal()->check($value);
+        $value = Decimal::of($value);
+
+        $isValid = (
+            $value->isGreaterThanOrEqualTo(0) &&
+            $value->isLessThan(1_000_000_000_000) &&
+            $value->getScale() <= 2
+        );
+        return $isValid ?: 'invalid-positive-amount';
+    }
+
+    public function checkReplacementPrice($value)
+    {
+        if ($value === null) {
+            return true;
+        }
+
+        V::floatVal()->check($value);
+        $value = Decimal::of($value);
+
+        $isValid = (
+            $value->isGreaterThanOrEqualTo(0) &&
+            $value->isLessThan(1_000_000_000_000) &&
+            $value->getScale() <= 2
+        );
+        return $isValid ?: 'invalid-positive-amount';
+    }
+
+    public function checkDegressiveRateId($value)
+    {
+        V::nullable(V::intVal())->check($value);
+        return $value === null || DegressiveRate::includes($value);
+    }
+
+    public function checkTaxId($value)
+    {
+        V::nullable(V::intVal())->check($value);
+        return $value === null || Tax::includes($value);
+    }
+
+    // ------------------------------------------------------
+    // -
+    // -    Relations
+    // -
+    // ------------------------------------------------------
+
+    public function park(): BelongsTo
+    {
+        return $this->belongsTo(Park::class);
+    }
+
+    public function tax(): BelongsTo
+    {
+        return $this->belongsTo(Tax::class);
+    }
+
+    public function degressiveRate(): BelongsTo
+    {
+        return $this->belongsTo(DegressiveRate::class);
+    }
+
+    public function category(): BelongsTo
+    {
+        return $this->belongsTo(Category::class);
+    }
+
+    public function subCategory(): BelongsTo
+    {
+        return $this->belongsTo(SubCategory::class);
+    }
+
+    public function attributes(): BelongsToMany
+    {
+        return $this->belongsToMany(Attribute::class, 'material_attributes')
+            ->using(MaterialAttribute::class)
             ->withPivot('value')
-            ->select(['attributes.id', 'attributes.name', 'attributes.type', 'attributes.unit']);
+            ->orderByPivot('id');
     }
 
-    public function Events()
+    public function events(): BelongsToMany
     {
-        $selectFields = [
-            'events.id',
-            'title',
-            'start_date',
-            'end_date',
-            'location',
-            'is_confirmed',
-            'is_archived',
-            'is_return_inventory_done',
-        ];
-        return $this->belongsToMany('Robert2\API\Models\Event', 'event_materials')
-            ->using('Robert2\API\Models\EventMaterial')
+        return $this->belongsToMany(Event::class, 'event_materials')
+            ->using(EventMaterial::class)
             ->withPivot('id', 'quantity')
-            ->select($selectFields)
-            ->orderBy('start_date', 'desc');
+            ->orderBy('mobilization_start_date', 'desc');
     }
 
-    public function Documents()
+    public function documents(): MorphMany
     {
-        return $this->hasMany('Robert2\API\Models\Document')
+        return $this->morphMany(Document::class, 'entity')
             ->orderBy('name', 'asc')
-            ->select(['id', 'name', 'type', 'size']);
+            ->orderBy('id', 'asc');
     }
 
-    // ——————————————————————————————————————————————————————
-    // —
-    // —    Mutators
-    // —
-    // ——————————————————————————————————————————————————————
+    public function tags(): MorphToMany
+    {
+        return $this->morphToMany(Tag::class, 'taggable');
+    }
+
+    // ------------------------------------------------------
+    // -
+    // -    Mutators
+    // -
+    // ------------------------------------------------------
 
     protected $casts = [
         'name' => 'string',
         'reference' => 'string',
         'description' => 'string',
-        'is_unitary' => 'boolean',
         'park_id' => 'integer',
         'category_id' => 'integer',
         'sub_category_id' => 'integer',
-        'rental_price' => 'float',
+        'rental_price' => AsDecimal::class,
+        'degressive_rate_id' => 'integer',
+        'tax_id' => 'integer',
         'stock_quantity' => 'integer',
         'out_of_order_quantity' => 'integer',
-        'replacement_price' => 'float',
+        'replacement_price' => AsDecimal::class,
         'is_hidden_on_bill' => 'boolean',
         'is_discountable' => 'boolean',
-        'picture' => 'string',
-        'picture_path' => 'string',
         'note' => 'string',
+        'created_at' => 'immutable_datetime',
+        'updated_at' => 'immutable_datetime',
+        'deleted_at' => 'immutable_datetime',
     ];
 
-    public function getStockQuantityAttribute($value)
+    public function getPictureAttribute($value): UploadedFileInterface|string|null
     {
-        if ($this->is_unitary) {
-            $value = 0;
+        if (!$value || $value instanceof UploadedFileInterface) {
+            return $value;
         }
-        return $this->castAttribute('stock_quantity', $value);
-    }
 
-    public function getOutOfOrderQuantityAttribute($value)
-    {
-        if ($this->is_unitary) {
-            $value = 0;
-        }
-        return $this->castAttribute('out_of_order_quantity', $value);
-    }
-
-    public function getParkAttribute()
-    {
-        if ($this->is_unitary) {
+        // - Le chemin ne sera disponible qu'une fois le matériel sauvegardé.
+        if (!$this->exists) {
             return null;
         }
 
-        $park = $this->Park()->first();
-        return $park ? $park->toArray() : null;
+        return (string) Config::getBaseUri()
+            ->withPath(sprintf('/static/materials/%s/picture', $this->id));
     }
 
-    public function getCategoryAttribute()
+    public function getPictureRealPathAttribute(): string|null
     {
-        $category = $this->Category()->first();
-        if (!$category) {
+        $picture = $this->getAttributeFromArray('picture');
+        if (empty($picture)) {
             return null;
         }
-        $category = $category->toArray();
-        unset($category['sub_categories']);
 
-        return $category;
+        // - Dans le cas d'un fichier tout juste uploadé...
+        if ($picture instanceof UploadedFileInterface) {
+            throw new \LogicException("Unable to retrieve image path before having persisted it.");
+        }
+
+        return static::PICTURE_BASEPATH . DS . $picture;
     }
 
-    public function getSubCategoryAttribute()
+    public function getStockQuantityAttribute(mixed $value): int
     {
-        $subCategory = $this->SubCategory()->first();
-        return $subCategory ? $subCategory->toArray() : null;
+        return $this->castAttribute('stock_quantity', $value ?? 0);
     }
 
-    public function getAttributesAttribute()
+    public function getOutOfOrderQuantityAttribute(mixed $value): int
     {
-        $attributes = $this->Attributes()->get();
+        return $this->castAttribute('out_of_order_quantity', $value ?? 0);
+    }
+
+    public function getParkAttribute(): Park|null
+    {
+        return $this->getRelationValue('park');
+    }
+
+    public function getDegressiveRateAttribute(): DegressiveRate|null
+    {
+        return $this->getRelationValue('degressiveRate');
+    }
+
+    public function getTaxAttribute(): Tax|null
+    {
+        return $this->getRelationValue('tax');
+    }
+
+    public function getCategoryAttribute(): Category|null
+    {
+        return $this->getRelationValue('category');
+    }
+
+    public function getIsDeletedAttribute(): bool
+    {
+        return $this->trashed();
+    }
+
+    public function getAvailableQuantityAttribute(): int
+    {
+        $availableQuantity = $this->getTransientAttribute('available_quantity');
+        if ($availableQuantity !== null) {
+            return $availableQuantity;
+        }
+
+        $withAvailabilities = $this->withAvailabilities(
+            new Period('now', 'now +1 minute'),
+        );
+        return $withAvailabilities->available_quantity;
+    }
+
+    /** @return Collection<array-key, Tag> */
+    public function getTagsAttribute(): Collection
+    {
+        return $this->getRelationValue('tags');
+    }
+
+    /** @return Collection<array-key, Attribute> */
+    public function getAttributesAttribute(): Collection
+    {
+        $attributes = $this->attributes()->get();
         if (!$attributes) {
+            return new Collection();
+        }
+
+        return $attributes
+            ->filter(function ($attribute) {
+                if ($attribute->categories->isEmpty()) {
+                    return true;
+                }
+
+                return (
+                    $this->category !== null &&
+                    $attribute->categories->contains('id', $this->category->id)
+                );
+            })
+            ->map(static function ($attribute) {
+                $attribute->value = $attribute->pivot->value;
+                return $attribute->append(['value']);
+            })
+            ->sortBy('name')
+            ->values();
+    }
+
+    public function getContextAttribute(): Event|null
+    {
+        return $this->getTransientAttribute('context');
+    }
+
+    public function getDegressiveRateContextAttribute(): Decimal|null
+    {
+        if ($this->context === null) {
             return null;
         }
-        return array_map(function ($attribute) {
-            $type = $attribute['type'];
-            $value = $attribute['pivot']['value'];
-            if ($type === 'integer') {
-                $value = (int)$value;
-            }
-            if ($type === 'float') {
-                $value = (float)$value;
-            }
-            if ($type === 'boolean') {
-                $value = $value === 'true' || $value === '1';
-            }
-            $attribute['value'] = $value;
 
-            unset($attribute['pivot']);
-            return $attribute;
-        }, $attributes->toArray());
+        $contextPeriod = $this->context->operation_period;
+
+        $durationDays = $contextPeriod->asDays();
+
+        // - Pas de dégressivité.
+        if ($this->degressive_rate === null) {
+            return Decimal::of($durationDays)
+                ->toScale(2, RoundingMode::UNNECESSARY);
+        }
+
+        return $this->degressive_rate->computeForDays($durationDays);
     }
 
-    public function getEventsAttribute()
+    public function getRentalPriceContextAttribute(): Decimal|null
     {
-        $events = $this->Events()->get();
-        return $events ? $events->toArray() : null;
+        $degressiveRate = $this->degressive_rate_context;
+        if (
+            $this->context === null ||
+            $degressiveRate === null ||
+            $this->rental_price === null
+        ) {
+            return null;
+        }
+
+        return $this->rental_price
+            ->multipliedBy($degressiveRate)
+            // @see https://wiki.dolibarr.org/index.php?title=VAT_setup,_calculation_and_rounding_rules
+            ->toScale(2, RoundingMode::HALF_UP);
     }
 
-    public function getDocumentsAttribute()
+    public function getDepartureInventoryTodoAttribute(): Event|null
     {
-        $documents = $this->Documents()->get();
-        return $documents ? $documents->toArray() : null;
+        $bookingsEntities = [
+            Event::class => Event::query(),
+        ];
+
+        $query = new QueryAggregator();
+        foreach ($bookingsEntities as $modelClass => $modelQuery) {
+            $modelQuery = $modelQuery
+                ->whereHas('materials', fn (Builder $bookingMaterialQuery) => (
+                    $bookingMaterialQuery
+                        ->where('material_id', $this->id)
+                        ->where(static fn (Builder $subQuery) => (
+                            $subQuery
+                                ->whereNull('quantity_departed')
+                                ->orWhereColumn('quantity_departed', '<', 'quantity')
+                        ))
+                ))
+                ->departureInventoryTodo();
+
+            $query->add($modelClass, $modelQuery);
+        }
+
+        return $query->orderBy('mobilization_start_date')->get()->first();
     }
 
-    // ——————————————————————————————————————————————————————
-    // —
-    // —    Setters
-    // —
-    // ——————————————————————————————————————————————————————
+    public function getReturnInventoryTodoAttribute(): Event|null
+    {
+        $bookingsEntities = [
+            Event::class => Event::query(),
+        ];
+
+        $query = new QueryAggregator();
+        foreach ($bookingsEntities as $modelClass => $modelQuery) {
+            $modelQuery = $modelQuery
+                ->whereHas('materials', fn (Builder $bookingMaterialQuery) => (
+                    $bookingMaterialQuery
+                        ->where('material_id', $this->id)
+                        ->where(static fn (Builder $subQuery) => (
+                            $subQuery
+                                ->whereNull('quantity_returned')
+                                ->orWhereColumn('quantity_returned', '<', 'quantity')
+                        ))
+                ))
+                ->where('mobilization_end_date', '>=', (Carbon::now()->subDays(30)))
+                ->returnInventoryTodo();
+
+            $query->add($modelClass, $modelQuery);
+        }
+
+        return $query->orderByDesc('mobilization_end_date')->get()->first();
+    }
+
+    // ------------------------------------------------------
+    // -
+    // -    Setters
+    // -
+    // ------------------------------------------------------
 
     protected $fillable = [
         'name',
@@ -235,6 +593,8 @@ class Material extends BaseModel
         'category_id',
         'sub_category_id',
         'rental_price',
+        'degressive_rate_id',
+        'tax_id',
         'stock_quantity',
         'out_of_order_quantity',
         'replacement_price',
@@ -244,80 +604,556 @@ class Material extends BaseModel
         'note',
     ];
 
+    public function setAvailableQuantityAttribute(int $value): void
+    {
+        $this->setTransientAttribute('available_quantity', $value);
+    }
+
+    public function setContextAttribute(Event|null $value): void
+    {
+        $this->setTransientAttribute('context', $value);
+    }
+
     // ------------------------------------------------------
     // -
-    // -    Custom Methods
+    // -    Overwritten methods
     // -
     // ------------------------------------------------------
 
-    public static function recalcQuantitiesForPeriod(
-        array $data,
-        ?string $start = null,
-        ?string $end = null,
-        ?int $exceptEventId = null
-    ): array {
-        if (empty($data)) {
-            return [];
+    public function save(array $options = [])
+    {
+        $hasPictureChange = $this->isDirty('picture');
+        if (!$hasPictureChange) {
+            return parent::save($options);
         }
 
-        $events = [];
-        if (!empty($start) || !empty($end)) {
-            $events = (new Event)->setSearchPeriod($start, $end)->getAll();
+        // - On valide avant d'uploader...
+        if ($options['validate'] ?? true) {
+            $this->validate();
+        }
+        $options = array_replace($options, ['validate' => false]);
 
-            if ($exceptEventId) {
-                $events = $events->where('id', '!=', $exceptEventId);
+        $previousPicture = $this->getOriginal('picture');
+        $newPicture = $this->getAttributeFromArray('picture');
+
+        // - Si ce n'est ni un upload de fichier, ni une "suppression" de l'image existante.
+        //   On vérifie que la chaîne de caractère passée (car ça doit en être une) correspond
+        //   bien à un fichier existant dans le dossier attendu, sinon on renvoi une erreur.
+        $isFileUpload = $newPicture instanceof UploadedFileInterface;
+        if (!empty($newPicture) && !$isFileUpload) {
+            if (!is_string($newPicture)) {
+                throw new \RuntimeException(
+                    "An error occurred while uploading the image: " .
+                    "The image format to be uploaded is not supported.",
+                );
             }
 
-            $events = $events->with('Materials')->get()->toArray();
+            if (!@file_exists(static::PICTURE_BASEPATH . DS . $newPicture)) {
+                throw new \RuntimeException(
+                    "An error occurred while uploading the image: " .
+                    "The string passed does not correspond to an existing file in the destination folder.",
+                );
+            }
         }
 
-        $periods = splitPeriods($events);
+        // - Si on a un nouvel upload d'image, on la déplace dans le bon dossier.
+        if ($isFileUpload) {
+            /** @var UploadedFileInterface $newPicture */
+            $extension = pathinfo($newPicture->getClientFilename(), PATHINFO_EXTENSION);
+            $filename = sprintf('%s.%s', (string) Str::uuid(), $extension);
 
-        foreach ($data as &$material) {
-            $quantityPerPeriod = [0];
-            foreach ($periods as $periodIndex => $period) {
-                $overlapEvents = array_filter($events, function ($event) use ($period) {
-                    return (
-                        strtotime($event['start_date']) < strtotime($period[1]) &&
-                        strtotime($event['end_date']) > strtotime($period[0])
-                    );
-                });
+            if (!is_dir(static::PICTURE_BASEPATH)) {
+                mkdir(static::PICTURE_BASEPATH, 0777, true);
+            }
 
-                $quantityPerPeriod[$periodIndex] = 0;
-                foreach ($overlapEvents as $event) {
-                    $eventMaterialIndex = array_search($material['id'], array_column($event['materials'], 'id'));
-                    if ($eventMaterialIndex === false) {
+            try {
+                $newPicture->moveTo(static::PICTURE_BASEPATH . DS . $filename);
+            } catch (\Throwable) {
+                throw new \Exception(
+                    "An error occurred while uploading the image: " .
+                    "The image could not be moved to the destination folder.",
+                );
+            }
+
+            $this->picture = $filename;
+        }
+
+        $rollbackUpload = function () use ($isFileUpload, $newPicture) {
+            if (!$isFileUpload) {
+                return;
+            }
+
+            try {
+                $filename = $this->getAttributeFromArray('picture');
+                @unlink(static::PICTURE_BASEPATH . DS . $filename);
+            } catch (\Throwable) {
+                // NOTE: On ne fait rien si la suppression plante car de toute
+                //       façon on est déjà dans un contexte d'erreur...
+            }
+
+            // - On remet l'`UploadedFile` en valeur de l'attribut `picture`.
+            $this->picture = $newPicture;
+        };
+
+        try {
+            $saved = parent::save($options);
+        } catch (\Throwable $e) {
+            $rollbackUpload();
+            throw $e;
+        }
+
+        if (!$saved) {
+            $rollbackUpload();
+            return false;
+        }
+
+        // - On supprime l'ancienne image...
+        if ($previousPicture !== null) {
+            try {
+                @unlink(static::PICTURE_BASEPATH . DS . $previousPicture);
+            } catch (\Throwable) {
+                // NOTE: On ne fait rien si la suppression plante, le fichier sera orphelin mais le
+                //       plantage de sa suppression ne justifie pas qu'on unsave le matériel, etc.
+            }
+        }
+
+        return true;
+    }
+
+    public function delete()
+    {
+        if (!$this->exists) {
+            return true;
+        }
+        $deleted = parent::delete();
+
+        $filename = $this->getAttributeFromArray('picture');
+        if ($this->forceDeleting && $deleted && !empty($filename)) {
+            try {
+                @unlink(static::PICTURE_BASEPATH . DS . $filename);
+            } catch (\Throwable) {
+                // NOTE: On ne fait rien si la suppression plante, le fichier sera orphelin mais le
+                //       plantage de sa suppression ne justifie pas qu'on undelete le matériel.
+            }
+        }
+
+        return $deleted;
+    }
+
+    // ------------------------------------------------------
+    // -
+    // -    Méthodes liées à une "entity"
+    // -
+    // ------------------------------------------------------
+
+    public function edit(array $data): static
+    {
+        if (array_key_exists('stock_quantity', $data)) {
+            $stockQuantity = $data['stock_quantity'];
+            if ($stockQuantity !== null && (int) $stockQuantity < 0) {
+                $data['stock_quantity'] = 0;
+            }
+        }
+
+        if (array_key_exists('out_of_order_quantity', $data)) {
+            $stockQuantity = (int) ($data['stock_quantity'] ?? 0);
+            $outOfOrderQuantity = (int) $data['out_of_order_quantity'];
+            if ($outOfOrderQuantity > $stockQuantity) {
+                $outOfOrderQuantity = $stockQuantity;
+                $data['out_of_order_quantity'] = $outOfOrderQuantity;
+            }
+            if ($outOfOrderQuantity <= 0) {
+                $data['out_of_order_quantity'] = null;
+            }
+        }
+
+        return dbTransaction(function () use ($data) {
+            $hasFailed = false;
+            $validationErrors = [];
+
+            try {
+                $this->fill(Arr::except($data, ['tags', 'approvers', 'attributes']))->save();
+            } catch (ValidationException $e) {
+                $validationErrors = $e->getValidationErrors();
+                $hasFailed = true;
+            }
+
+            // - Tags
+            if (isset($data['tags'])) {
+                Assert::isArray($data['tags'], "Key `tags` must be an array.");
+
+                $tags = [];
+                foreach ($data['tags'] as $tagId) {
+                    if (empty($tagId)) {
                         continue;
                     }
 
-                    $eventMaterial = $event['materials'][$eventMaterialIndex];
-                    $quantityPerPeriod[$periodIndex] += $eventMaterial['pivot']['quantity'];
+                    $relatedTag = is_numeric($tagId) ? Tag::find($tagId) : null;
+                    if ($relatedTag === null) {
+                        $validationErrors['tags'] = __('field-contains-invalid-values');
+                        $hasFailed = true;
+                        break;
+                    }
+
+                    $tags[] = $relatedTag->id;
+                }
+
+                if (!$hasFailed) {
+                    $this->tags()->sync($tags);
                 }
             }
 
-            $remainingQuantity = (int)$material['stock_quantity'] - (int)$material['out_of_order_quantity'];
-            $material['remaining_quantity'] = max($remainingQuantity - max($quantityPerPeriod), 0);
-        }
+            // - Attributs
+            if (isset($data['attributes'])) {
+                Assert::isArray($data['attributes'], "Key `attributes` must be an array.");
 
-        return $data;
+                $attributes = [];
+                foreach ($data['attributes'] as $attribute) {
+                    if (empty($attribute['value'])) {
+                        continue;
+                    }
+
+                    $attributes[$attribute['id']] = [
+                        'value' => (string) $attribute['value'],
+                    ];
+                }
+
+                if (!$hasFailed) {
+                    $this->attributes()->sync($attributes);
+                }
+            }
+
+            if ($hasFailed) {
+                throw new ValidationException($validationErrors);
+            }
+
+            return $this->refresh();
+        });
+    }
+
+    public function withAvailabilities(?PeriodInterface $period = null): static
+    {
+        return static::allWithAvailabilities(new Collection([$this]), $period)->get(0);
+    }
+
+    // ------------------------------------------------------
+    // -
+    // -    Méthodes de "repository"
+    // -
+    // ------------------------------------------------------
+
+    /**
+     * @param int $parkId
+     *
+     * @return Collection<array-key, Material>
+     */
+    public static function getParkAll(int $parkId)
+    {
+        return static::inPark($parkId)
+            ->get();
+    }
+
+    // ------------------------------------------------------
+    // -
+    // -    Query Scopes
+    // -
+    // ------------------------------------------------------
+
+    protected $orderable = [
+        'name',
+        'reference',
+        'rental_price',
+        'stock_quantity',
+        'out_of_order_quantity',
+    ];
+
+    public function scopeSearch(Builder $query, string $term): Builder
+    {
+        Assert::minLength($term, 2, "The term must contain more than two characters.");
+
+        $safeTerm = addcslashes($term, '%_');
+        $likeTerm = sprintf('%%%s%%', $safeTerm);
+        return $query->where(static fn (Builder $subQuery) => (
+            $subQuery
+                ->orWhere('name', 'LIKE', $likeTerm)
+                ->orWhere('reference', 'LIKE', $likeTerm)
+        ));
     }
 
     /**
-     * @param integer $parkId
+     * Permet de récupérer uniquement le matériel lié à un parc donné.
      *
-     * @return Material[]
+     * @param Builder $query
+     * @param int $parkId - Le parc concerné.
      */
-    public static function getParkAll(int $parkId): array
+    public function scopeInPark(Builder $query, int $parkId): Builder
     {
-        return static::where('park_id', $parkId)->get()->toArray();
+        return $query->where(static function (Builder $query) use ($parkId) {
+            $query->where(static function ($subQuery) use ($parkId) {
+                $subQuery
+                    ->where('park_id', $parkId);
+            });
+        });
     }
 
-    public static function getPicturePath(int $id, ?string $pictureName = null)
+    /**
+     * Permet de récupérer uniquement le matériel ne faisant pas partie d'un parc donné.
+     *
+     * @param Builder $query
+     * @param array $parks - Les identifiants des parcs dont on ne veut pas le matériel.
+     */
+    public function scopeNotInParks(Builder $query, array $parks): Builder
     {
-        $path = DATA_FOLDER . DS . 'materials'. DS . $id;
-        if ($pictureName) {
-            $path .= DS . $pictureName;
+        return $query
+            ->where(static fn (Builder $subQuery) => (
+                $subQuery
+                    ->whereNotIn('park_id', $parks)
+            ));
+    }
+
+    public function scopeCustomOrderBy(Builder $query, string $column, string $direction = 'asc'): Builder
+    {
+        if (!in_array($column, ['stock_quantity', 'out_of_order_quantity'], true)) {
+            return parent::scopeCustomOrderBy($query, $column, $direction);
         }
-        return $path;
+
+        if ($column === 'stock_quantity') {
+            return $query
+                ->orderBy(
+                    'stock_quantity',
+                    $direction,
+                );
+        }
+
+        if ($column === 'out_of_order_quantity') {
+            return $query
+                ->orderBy(
+                    'out_of_order_quantity',
+                    $direction,
+                );
+        }
+
+        return $query;
+    }
+
+    // ------------------------------------------------------
+    // -
+    // -    Méthodes utilitaires
+    // -
+    // ------------------------------------------------------
+
+    /**
+     * Permet de récupérer la collection de matériel passée en argument, dans laquelle
+     * sont injectées les données de disponibilités, pour une période donnée.
+     *
+     * Si un événement, une réservation ou un panier est fourni en tant que `$period`, son propre
+     * matériel sera exclu du calcul des disponibilités.
+     *
+     * Ces disponibilités dépendent de la valeur du paramètre `$period` qui peut contenir:
+     * - Soit une instance implémentant `PeriodInterface` dont les dates seront utilisées pour les dispos.
+     * - Soit `null` si les disponibilités doivent être récupérées sans prendre en compte de période.
+     *
+     * @param Collection<array-key, Material> $materials La liste du matériel.
+     * @param PeriodInterface|null $period Le booking (ou simple Period) à utiliser comme limite de temps.
+     *
+     * @return Collection<array-key, Material>
+     */
+    public static function allWithAvailabilities(
+        Collection $materials,
+        ?PeriodInterface $period = null,
+    ): Collection {
+        if ($materials->isEmpty()) {
+            return new Collection([]);
+        }
+
+        // - NOTE : Ne pas prefetch le materiel des bookables via `->with()`,
+        //   car cela peut surcharger la mémoire rapidement.
+        // FIXME: Utiliser le principe du lazy-loading pour optimiser l'utilisation de la mémoire.
+        $otherBorrowings = new Collection();
+        if ($period !== null) {
+            $otherBorrowings = (new Collection())
+                // - Événements.
+                ->concat(
+                    Event::inPeriod($period)
+                        ->when(
+                            $period instanceof Event && $period->exists,
+                            static function (Builder $query) use ($period) {
+                                /** @var Event $period */
+                                $query->where('id', '!=', $period->id);
+                            },
+                        )
+                        ->get(),
+                );
+
+            /** @var CoreCollection<array-key, Event> $otherBorrowings */
+            $otherBorrowings = $otherBorrowings
+                ->sortBy(static fn (PeriodInterface $otherBorrowing) => $otherBorrowing->getStartDate())
+                ->values();
+        }
+
+        // - Groupe les bookings concurrents par périodes pour pouvoir
+        //   ensuite récupérer les périodes de sortie des matériels.
+        $otherBorrowingsByPeriods = $otherBorrowings
+            ->reduce(
+                static fn ($dates, $otherBorrowing) => $dates->push(
+                    $otherBorrowing->getStartDate()->format('Y-m-d H:i:s'),
+                    $otherBorrowing->getEndDate()->format('Y-m-d H:i:s'),
+                ),
+                new CoreCollection(),
+            )
+            ->unique()
+            ->sort(static function ($a, $b) {
+                if ($a === $b) {
+                    return 0;
+                }
+                return strtotime($a) < strtotime($b) ? -1 : 1;
+            })
+            ->values()
+            ->sliding(2)
+            ->mapSpread(static function ($startDate, $endDate) use ($otherBorrowings) {
+                $period = new Period($startDate, $endDate);
+                return $otherBorrowings->filter(static fn (PeriodInterface $otherBorrowing) => (
+                    $period->overlaps($otherBorrowing)
+                ));
+            });
+
+        // - Optimisation: Plus utilisé après et potentiellement volumineux.
+        unset($otherBorrowings);
+
+        // - Récupération des quantités utilisées pour chaque
+        //   matériel pendant la période pour utilisation ultérieure.
+        $materialsUsage = new CoreCollection([]);
+        foreach ($otherBorrowingsByPeriods as $periodIndex => $otherBorrowingsPeriod) {
+            /** @var Event $otherBorrowing */
+            foreach ($otherBorrowingsPeriod as $otherBorrowing) {
+                /** @var Collection<array-key, EventMaterial> $borrowingMaterials */
+                $borrowingMaterials = $otherBorrowing->materials->keyBy('material_id')->all();
+                foreach ($borrowingMaterials as $materialId => $borrowingMaterial) {
+                    $quantity = $borrowingMaterial->quantity;
+
+                    // - Si le matériel était déjà présent dans une autre période.
+                    $existingUsage = $materialsUsage->get($materialId);
+                    $quantities = $existingUsage['quantities'] ?? [];
+                    if ($existingUsage !== null) {
+                        $quantity += $quantities[$periodIndex] ?? 0;
+                    }
+
+                    $materialsUsage->put($materialId, [
+                        'quantities' => array_replace($quantities, [$periodIndex => $quantity]),
+                    ]);
+                }
+            }
+        }
+
+        // - Optimisation: Plus utilisé après et potentiellement volumineux.
+        unset($otherBorrowingsByPeriods);
+
+        return $materials->map(static function ($material) use ($materialsUsage) {
+            $material = clone $material;
+            $materialUsage = $materialsUsage->get($material->id, [
+                'quantities' => [0],
+            ]);
+
+            $usedCount = max($materialUsage['quantities']);
+
+            $availableQuantity = (int) $material->stock_quantity - (int) $material->out_of_order_quantity;
+            $material->available_quantity = max($availableQuantity - $usedCount, 0);
+
+            return $material;
+        });
+    }
+
+    // ------------------------------------------------------
+    // -
+    // -    Serialization
+    // -
+    // ------------------------------------------------------
+
+    public function serialize(string $format = self::SERIALIZE_DEFAULT): array
+    {
+        $formatsWithContext = [
+            self::SERIALIZE_WITH_CONTEXT,
+            self::SERIALIZE_WITH_CONTEXT_EXCERPT,
+            self::SERIALIZE_PUBLIC,
+        ];
+        if (in_array($format, $formatsWithContext, true) && $this->context === null) {
+            throw new \LogicException(
+                'The `context` attribute should be specified ' .
+                'when using formats with contextual data.',
+            );
+        }
+
+        /** @var Material $material */
+        $material = tap(clone $this, static function (Material $material) use ($format) {
+            $material->append(['tags', 'attributes']);
+
+            switch ($format) {
+                case self::SERIALIZE_WITH_AVAILABILITY:
+                case self::SERIALIZE_WITH_CONTEXT:
+                    $material->append([
+                        'available_quantity',
+                        'is_deleted',
+                    ]);
+                    break;
+
+                case self::SERIALIZE_WITH_CONTEXT_EXCERPT:
+                    $material->append(['is_deleted']);
+                    break;
+
+                case self::SERIALIZE_PUBLIC:
+                    $material->append(['available_quantity']);
+                    break;
+
+                case self::SERIALIZE_DETAILS:
+                    $material->append([
+                        'available_quantity',
+                        'departure_inventory_todo',
+                        'return_inventory_todo',
+                    ]);
+                    break;
+            }
+        });
+
+        $data = $material->attributesForSerialization();
+        if (in_array($format, $formatsWithContext, true)) {
+            $data['degressive_rate'] = $material->degressive_rate_context;
+            $data['rental_price_period'] = $material->rental_price_context;
+        }
+
+        if ($format === self::SERIALIZE_DETAILS) {
+            if ($material->return_inventory_todo) {
+                $bookingClass = $material->return_inventory_todo::class;
+                $data['return_inventory_todo'] = $material
+                    ->return_inventory_todo
+                    ->serialize($bookingClass::SERIALIZE_BOOKING_SUMMARY);
+            }
+
+            if ($material->departure_inventory_todo) {
+                $bookingClass = $material->departure_inventory_todo::class;
+                $data['departure_inventory_todo'] = $material
+                    ->departure_inventory_todo
+                    ->serialize($bookingClass::SERIALIZE_BOOKING_SUMMARY);
+            }
+        }
+
+        if ($format === self::SERIALIZE_PUBLIC) {
+            return Arr::only($data, [
+                'id',
+                'name',
+                'description',
+                'picture',
+                'degressive_rate',
+                'available_quantity',
+                'rental_price',
+                'rental_price_period',
+            ]);
+        }
+
+        return Arr::except($data, [
+            'is_unitary',
+            'is_reservable',
+            'park_location_id',
+            'deleted_at',
+        ]);
     }
 }

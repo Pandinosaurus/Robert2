@@ -1,0 +1,59 @@
+//
+// - Text sizes
+//
+
+$base-font-size: 13px;
+
+//
+// - Bords arrondis
+//
+
+/// Bord arrondi moyen pour les éléments d'interface.
+/// @type Number
+$border-radius-normal: 4px;
+
+/// Grand bord arrondi pour les éléments d'interface.
+/// @type Number
+$border-radius-large: 10px;
+
+//
+// - Nav sizes
+//
+
+$sidebar-width: 60px;
+$sidebar-full-width: 200px;
+$main-header-height: 60px;
+$table-search-input: 206px;
+
+//
+// - Spacing
+//
+
+/// Très petit espace pour les éléments d'interface.
+/// (Équivalent à un espace de ~4.55px)
+/// @type Number
+$spacing-thin: 0.35rem;
+
+/// Petit espace pour les éléments d'interface.
+/// (Équivalent à un espace de ~7.5px)
+/// @type Number
+$spacing-small: 0.568rem;
+
+/// Espace moyen pour les éléments d'interface.
+/// (Équivalent à un espace de ~15px)
+/// @type Number
+$spacing-medium: 1.154rem;
+
+/// Grand espace pour les éléments d'interface.
+/// (Équivalent à un espace de ~25px)
+/// @type Number
+$spacing-large: 1.923rem;
+
+//
+// - Screens sizes variables
+//
+
+$screen-mobile: 580px;
+$screen-tablet: 768px;
+$screen-desktop: 1024px;
+$screen-big-desktop: 1400px;

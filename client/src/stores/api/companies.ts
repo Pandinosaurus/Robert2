@@ -1,24 +1,83 @@
-/* eslint-disable babel/camelcase */
+import { z } from '@/utils/validation';
+import requester from '@/globals/requester';
+import { withPaginationEnvelope } from './@schema';
+import { CountrySchema } from './countries';
 
-import type { Country } from '@/stores/api/countries';
+import type { SchemaInfer } from '@/utils/validation';
+import type { Country } from './countries';
+import type { PaginatedData, ListingParams } from './@types';
+
+// ------------------------------------------------------
+// -
+// -    Schema / Enums
+// -
+// ------------------------------------------------------
+
+export const CompanySchema = z.strictObject({
+    id: z.number(),
+    legal_name: z.string(),
+    phone: z.string().nullable(),
+    street: z.string().nullable(),
+    postal_code: z.string().nullable(),
+    locality: z.string().nullable(),
+    country_id: z.number().nullable(),
+    country: z.lazy(() => CountrySchema).nullable(),
+    full_address: z.string().nullable(),
+    note: z.string().nullable(),
+});
+
+// ------------------------------------------------------
+// -
+// -    Types
+// -
+// ------------------------------------------------------
+
+export type Company = SchemaInfer<typeof CompanySchema>;
 
 //
-// - Types
+// - Edition
 //
 
-export type Company = {
-    id: number,
+export type CompanyEdit = {
     legal_name: string,
-    phone: string,
-    street: string,
-    postal_code: string,
-    locality: string,
-    country_id: number | null,
-    country: Country | null,
-    note: string,
-    created_at: string,
-    updated_at: string,
-    deleted_at: string | null,
+    phone: string | null,
+    street: string | null,
+    postal_code: string | null,
+    locality: string | null,
+    country_id: Country['id'] | null,
+    note: string | null,
 };
 
-/* eslint-enable babel/camelcase */
+//
+// - Récupération
+//
+
+type GetAllParams = ListingParams & { deleted?: boolean };
+
+// ------------------------------------------------------
+// -
+// -    Fonctions
+// -
+// ------------------------------------------------------
+
+const all = async (params: GetAllParams = {}): Promise<PaginatedData<Company[]>> => {
+    const response = await requester.get('/companies', { params });
+    return withPaginationEnvelope(CompanySchema).parse(response.data);
+};
+
+const one = async (id: Company['id']): Promise<Company> => {
+    const response = await requester.get(`/companies/${id}`);
+    return CompanySchema.parse(response.data);
+};
+
+const create = async (data: CompanyEdit): Promise<Company> => {
+    const response = await requester.post('/companies', data);
+    return CompanySchema.parse(response.data);
+};
+
+const update = async (id: Company['id'], data: CompanyEdit): Promise<Company> => {
+    const response = await requester.put(`/companies/${id}`, data);
+    return CompanySchema.parse(response.data);
+};
+
+export default { all, one, create, update };

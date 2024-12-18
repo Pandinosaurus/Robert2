@@ -1,16 +1,15 @@
 .env
+.env.*
+!.env.example
 
+src/App/Config/certs
 src/App/Config/*.json
 src/App/Config/*.json.bckp
-
-src/install/*.json
-!src/install/dependencyTree.json
+!src/App/Config/CRON.json
 
 /vendors/
 
 /data/*
 !/data/.gitkeep
 
-/.phpunit*
 tests/coverage/
-tests/Fixtures/tmp/*

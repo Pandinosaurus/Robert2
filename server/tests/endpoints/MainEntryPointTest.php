@@ -1,12 +1,16 @@
 <?php
-namespace Robert2\Tests;
+declare(strict_types=1);
+
+namespace Loxya\Tests;
+
+use Fig\Http\Message\StatusCodeInterface as StatusCode;
 
 final class MainEntryPointTest extends ApiTestCase
 {
-    public function testMainEntryPoint()
+    public function testMainEntryPoint(): void
     {
-        $response = (string)$this->client->get('/');
-        $this->assertStatusCode(200);
+        $response = (string) $this->client->get('/');
+        $this->assertStatusCode(StatusCode::STATUS_OK);
         $this->assertNotEmpty($response);
 
         $expectedFirstLine = '<!DOCTYPE html>';

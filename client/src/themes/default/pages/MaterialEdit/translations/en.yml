@@ -1,0 +1,17 @@
+title: Modify material "{name}"
+title-simple: Modify material
+title-create: New material
+
+help-name: Give a short name, and use the description field to detail the material if needed.
+
+currency-per-day: "{currency}\_/\_day"
+fields-changes-depending-on-category: The fields below fluctuate depending on the selected category.
+saved: Material saved.
+
+fields:
+    tax:
+        label: Tax
+        placeholder: Tax-free
+    degressive-rate:
+        label: Degressive Rate
+        placeholder: No degressivity
