@@ -1,0 +1,56 @@
+/// Reset des `<button>`
+%reset-button {
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    background: none;
+    color: inherit;
+    font-family: inherit;
+    font-size: inherit;
+    font-weight: inherit;
+    font-style: inherit;
+    line-height: inherit;
+    text-align: left;
+    cursor: pointer;
+    touch-action: manipulation;
+    appearance: none;
+
+    &:focus {
+        outline: none;
+    }
+}
+
+/// Reset des `<a>`
+%reset-link {
+    touch-action: manipulation;
+
+    &,
+    &:focus,
+    &:active,
+    &:hover {
+        color: inherit;
+        text-decoration: inherit;
+    }
+}
+
+/// Reset des `<ul>`
+%reset-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+/// Reset des `<dl>`
+%reset-dl {
+    margin: 0;
+}
+
+/// Reset des `<dd>`
+%reset-dd {
+    margin: 0;
+}
+
+/// Reset des `<p>`
+%reset-p {
+    margin: 0;
+}

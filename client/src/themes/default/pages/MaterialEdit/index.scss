@@ -1,0 +1,34 @@
+@use '~@/themes/default/style/globals';
+
+.MaterialEdit {
+    display: flex;
+    flex-direction: column-reverse;
+    justify-content: center;
+    width: 100%;
+    max-width: 500px;
+    margin: 0 auto;
+
+    &__side {
+        margin-bottom: globals.$spacing-medium;
+    }
+
+    //
+    // - Responsive
+    //
+
+    @media screen and (min-width: globals.$screen-desktop) {
+        flex-direction: row;
+        max-width: initial;
+
+        &__body {
+            width: 500px;
+            margin-right: globals.$spacing-large;
+            margin-bottom: globals.$form-fixed-actions-margin-bottom;
+        }
+
+        &__side {
+            width: 300px;
+            margin-top: 0;
+        }
+    }
+}

@@ -1,46 +1,37 @@
 <?php
 declare(strict_types=1);
 
-namespace Robert2\API\Controllers;
+namespace Loxya\Controllers;
 
-use Robert2\API\Controllers\Traits\WithPdf;
-use Robert2\API\Models\Estimate;
-use Robert2\API\Services\Auth;
-use Slim\Exception\HttpNotFoundException;
+use DI\Container;
+use Loxya\Controllers\Traits\Crud;
+use Loxya\Http\Request;
+use Loxya\Models\Estimate;
+use Loxya\Services\Auth;
+use Loxya\Services\I18n;
+use Psr\Http\Message\ResponseInterface;
 use Slim\Http\Response;
-use Slim\Http\ServerRequest as Request;
 
-class EstimateController extends BaseController
+final class EstimateController extends BaseController
 {
-    use WithPdf;
+    use Crud\SoftDelete;
 
-    public function getOne(Request $request, Response $response): Response
+    private I18n $i18n;
+
+    public function __construct(Container $container, I18n $i18n)
     {
-        $id = (int)$request->getAttribute('id');
+        parent::__construct($container);
 
-        $model = Estimate::find($id);
-        if (!$model) {
-            throw new HttpNotFoundException($request);
-        }
-
-        return $response->withJson($model->toArray());
+        $this->i18n = $i18n;
     }
 
-    public function create(Request $request, Response $response): Response
+    public function getOnePdf(Request $request, Response $response): ResponseInterface
     {
-        $eventId = (int)$request->getAttribute('eventId');
-        $discountRate = (float)$request->getParsedBodyParam('discountRate');
+        $id = $request->getIntegerAttribute('id');
+        $estimate = Estimate::findOrFailForUser($id, Auth::user());
 
-        $result = Estimate::createFromEvent($eventId, Auth::user()->id, $discountRate);
-        return $response->withJson($result->toArray(), SUCCESS_CREATED);
-    }
-
-    public function delete(Request $request, Response $response): Response
-    {
-        $id = (int)$request->getAttribute('id');
-        $model = Estimate::staticRemove($id);
-
-        $data = $model ? $model->toArray() : ['destroyed' => true];
-        return $response->withJson($data, SUCCESS_OK);
+        return $estimate
+            ->toPdf($this->i18n)
+            ->asResponse($response);
     }
 }

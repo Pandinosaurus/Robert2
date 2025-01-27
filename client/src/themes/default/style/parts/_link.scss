@@ -1,0 +1,15 @@
+/* stylelint-disable selector-max-type */
+
+a {
+    text-decoration: none;
+
+    &,
+    &:active {
+        color: $link-base-color;
+        cursor: pointer;
+    }
+
+    &:hover {
+        color: $link-hover-color;
+    }
+}

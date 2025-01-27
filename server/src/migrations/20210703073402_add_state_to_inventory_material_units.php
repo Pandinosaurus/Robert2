@@ -1,11 +1,12 @@
 <?php
+declare(strict_types=1);
+
+use Loxya\Config\Config;
 use Phinx\Migration\AbstractMigration;
 
-use Robert2\API\Config as Config;
-
-class AddStateToInventoryMaterialUnits extends AbstractMigration
+final class AddStateToInventoryMaterialUnits extends AbstractMigration
 {
-    public function up()
+    public function up(): void
     {
         $inventoryMaterialUnitsTable = $this->table('inventory_material_units');
         $inventoryMaterialUnitsTable
@@ -33,13 +34,13 @@ class AddStateToInventoryMaterialUnits extends AbstractMigration
             ])
             ->save();
 
-        $prefix = Config\Config::getSettings('db')['prefix'];
+        $prefix = Config::get('db.prefix');
 
         $units = $this->fetchAll(sprintf(
             'SELECT imu.`id`, mu.`state`
             FROM `%1$sinventory_material_units` AS imu
             LEFT JOIN `%1$smaterial_units` AS mu ON imu.`material_unit_id` = mu.`id`',
-            $prefix
+            $prefix,
         ));
         foreach ($units as $unit) {
             $this->execute(sprintf(
@@ -47,7 +48,7 @@ class AddStateToInventoryMaterialUnits extends AbstractMigration
                 SET `state_previous` = "%3$s", `state_current` = "%3$s" WHERE `id` = %2$d',
                 $prefix,
                 $unit['id'],
-                $unit['state']
+                $unit['state'],
             ));
         }
 
@@ -56,7 +57,7 @@ class AddStateToInventoryMaterialUnits extends AbstractMigration
             ->save();
 
         $inventoryMaterialUnitsTable
-            ->changeColumn('state_current', 'string', ['length' => 64])
+            ->changeColumn('state_current', 'string', ['length' => 64, 'null' => false])
             ->addForeignKey('state_current', 'material_unit_states', 'id', [
                 'delete' => 'RESTRICT',
                 'update' => 'NO_ACTION',
@@ -65,7 +66,7 @@ class AddStateToInventoryMaterialUnits extends AbstractMigration
             ->save();
     }
 
-    public function down()
+    public function down(): void
     {
         $inventoryMaterialUnitsTable = $this->table('inventory_material_units');
         $inventoryMaterialUnitsTable

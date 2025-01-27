@@ -1,24 +1,22 @@
 <?php
 declare(strict_types=1);
 
-namespace Robert2\API\Controllers;
+namespace Loxya\Controllers;
 
-use Robert2\API\Controllers\Traits\WithCrud;
-use Robert2\API\Models\Country;
+use Fig\Http\Message\StatusCodeInterface as StatusCode;
+use Loxya\Controllers\Traits\Crud;
+use Loxya\Http\Request;
+use Loxya\Models\Country;
+use Psr\Http\Message\ResponseInterface;
 use Slim\Http\Response;
-use Slim\Http\ServerRequest as Request;
 
-class CountryController extends BaseController
+final class CountryController extends BaseController
 {
-    use WithCrud;
+    use Crud\GetOne;
 
-    public function getAll(Request $request, Response $response): Response
+    public function getAll(Request $request, Response $response): ResponseInterface
     {
-        $data = (new Country())
-            ->setOrderBy('id', true)
-            ->getAll()
-            ->get(['id', 'name', 'code']);
-
-        return $response->withJson($data);
+        $countries = Country::orderBy('id', 'asc')->get();
+        return $response->withJson($countries, StatusCode::STATUS_OK);
     }
 }

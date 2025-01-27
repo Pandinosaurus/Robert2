@@ -1,21 +1,22 @@
 <?php
 declare(strict_types=1);
 
-namespace Robert2\API\Services\Auth;
+namespace Loxya\Services\Auth;
 
+use Carbon\CarbonImmutable;
 use Firebase\JWT\JWT as JWTCore;
-use Robert2\API\Config\Config;
-use Robert2\API\Services\Auth;
-use Robert2\API\Models\User;
-use Slim\Http\ServerRequest as Request;
+use Firebase\JWT\Key as JWTKey;
+use Illuminate\Support\Str;
+use Loxya\Config\Config;
+use Loxya\Http\Request;
+use Loxya\Models\User;
+use Loxya\Services\Auth\Contracts\AuthenticatorInterface;
 
 final class JWT implements AuthenticatorInterface
 {
-    private $settings;
-
-    public function __construct()
+    public function isEnabled(): bool
     {
-        $this->settings = Config::getSettings();
+        return true;
     }
 
     public function getUser(Request $request): ?User
@@ -23,7 +24,7 @@ final class JWT implements AuthenticatorInterface
         try {
             $token = $this->fetchToken($request);
             $decoded = $this->decodeToken($token);
-        } catch (\RuntimeException | \DomainException $exception) {
+        } catch (\RuntimeException | \DomainException) {
             return null;
         }
 
@@ -34,32 +35,43 @@ final class JWT implements AuthenticatorInterface
         return User::find($decoded['user']->id);
     }
 
-    public function logout(): bool
+    public function clearPersistentData(): void
     {
-        $cookieName = $this->settings['auth']['cookie'];
-        return setcookie($cookieName, '', time() - 42000, '/');
+        $cookieName = Config::get('auth.cookie');
+        $shouldSecureCookie = Config::isSslEnabled();
+
+        setcookie($cookieName, '', [
+            'expires' => time() - 42_000,
+            'path' => '/',
+            'secure' => $shouldSecureCookie,
+            'httponly' => false,
+
+            // - Note: Permet la création de cookies lorsque Loxya est
+            //   intégré dans des systèmes tiers (e.g. Notion).
+            'samesite' => $shouldSecureCookie ? 'None' : 'Lax',
+        ]);
     }
 
     // ------------------------------------------------------
     // -
-    // -    Internal methods
+    // -    Méthodes internes
     // -
     // ------------------------------------------------------
 
     private function fetchToken(Request $request): string
     {
         // - Tente de récupérer le token dans les headers HTTP.
-        $headerName = $this->settings['httpAuthHeader'];
-        $header = $request->getHeaderLine(sprintf('HTTP_%s', strtoupper(\snakeCase($headerName))));
+        $headerName = Config::get('httpAuthHeader');
+        $header = $request->getHeaderLine(sprintf('HTTP_%s', strtoupper(Str::snake($headerName))));
         if (!empty($header)) {
             if (preg_match('/Bearer\s+(.*)$/i', $header, $matches)) {
                 return $matches[1];
             }
         }
 
-        if (!Auth::isApiRequest($request)) {
+        if (!$request->isApi()) {
             // - Sinon tente de récupérer le token dans les cookies.
-            $cookieName = $this->settings['auth']['cookie'];
+            $cookieName = Config::get('auth.cookie');
             $cookieParams = $request->getCookieParams();
             if (isset($cookieParams[$cookieName])) {
                 if (preg_match('/Bearer\s+(.*)$/i', $cookieParams[$cookieName], $matches)) {
@@ -74,67 +86,50 @@ final class JWT implements AuthenticatorInterface
 
     private function decodeToken(string $token): array
     {
-        try {
-            $decoded = JWTCore::decode(
-                $token,
-                $this->settings['JWTSecret'],
-                ['HS256', 'HS512', 'HS384']
-            );
-            return (array) $decoded;
-        } catch (\Exception $exception) {
-            throw $exception;
-        }
+        $key = new JWTKey(Config::get('JWTSecret'), 'HS256');
+        $decoded = JWTCore::decode($token, $key);
+        return (array) $decoded;
     }
 
     // ------------------------------------------------------
     // -
-    // -    Public static methods
+    // -    Méthodes "helpers" statiques
     // -
     // ------------------------------------------------------
 
     public static function generateToken(User $user): string
     {
-        $duration = static::getTokenDuration($user) ?: 12;
-        $expires = new \DateTime(sprintf('now +%d hours', $duration));
+        $now = CarbonImmutable::now();
+        $expires = $now->addHours(Config::get('sessionExpireHours'));
 
         $payload = [
-            'iat'  => (new \DateTime())->getTimeStamp(),
-            'exp'  => $expires->getTimeStamp(),
-            'user' => $user->toArray()
+            'iat' => $now->getTimeStamp(),
+            'exp' => $expires->getTimeStamp(),
+            'user' => $user->toArray(),
         ];
 
-        $secret = Config::getSettings('JWTSecret');
-        return JWTCore::encode($payload, $secret, "HS256");
+        $secret = Config::get('JWTSecret');
+        return JWTCore::encode($payload, $secret, 'HS256');
     }
 
-    public static function registerToken(User $user, $forceSessionOnly = false): string
+    public static function registerSessionToken(User $user): string
     {
-        $settings = Config::getSettings();
         $token = static::generateToken($user);
 
-        $expireTime = 0;
-        if (!$forceSessionOnly) {
-            $expireHours = static::getTokenDuration($user);
-            if ($expireHours && $expireHours !== 0) {
-                $expireTime = time() + $expireHours * 60 * 60;
-            }
-        }
+        $cookieName = Config::get('auth.cookie');
+        $shouldSecureCookie = Config::isSslEnabled();
 
-        setcookie(
-            $settings['auth']['cookie'],
-            $token,
-            $expireTime,
-            '/'
-        );
+        setcookie($cookieName, $token, [
+            'expires' => 0,
+            'path' => '/',
+            'secure' => $shouldSecureCookie,
+            'httponly' => false,
+
+            // - Note: Permet la création de cookies lorsque Loxya est
+            //   intégré dans des systèmes tiers (e.g. Notion).
+            'samesite' => $shouldSecureCookie ? 'None' : 'Lax',
+        ]);
 
         return $token;
-    }
-
-    protected static function getTokenDuration(User $user)
-    {
-        $settings = Config::getSettings();
-
-        $defaultTokenDuration = $settings['sessionExpireHours'];
-        return $user->settings['auth_token_validity_duration'] ?: $defaultTokenDuration;
     }
 }

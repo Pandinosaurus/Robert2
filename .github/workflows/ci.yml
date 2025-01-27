@@ -10,18 +10,20 @@ jobs:
         runs-on  : ubuntu-latest
         defaults : { run: { working-directory: ./client }}
         steps    :
-            - uses: actions/checkout@v2
-            - uses: actions/setup-node@v1
+            - uses: actions/checkout@v4
+            - uses: actions/setup-node@v4
+              with: { node-version: '18' }
             - run: yarn install --non-interactive --pure-lockfile
-            - run: yarn lint:js --max-warnings 42 --color
+            - run: yarn lint:js --max-warnings 0 --color
 
     client-linting-scss:
         name     : "Client: Linting (SCSS)"
         runs-on  : ubuntu-latest
         defaults : { run: { working-directory: ./client }}
         steps    :
-            - uses: actions/checkout@v2
-            - uses: actions/setup-node@v1
+            - uses: actions/checkout@v4
+            - uses: actions/setup-node@v4
+              with: { node-version: '18' }
             - run: yarn install --non-interactive --pure-lockfile
             - run: yarn lint:scss --max-warnings 0 --color
 
@@ -30,8 +32,9 @@ jobs:
         runs-on  : ubuntu-latest
         defaults : { run: { working-directory: ./client }}
         steps    :
-            - uses: actions/checkout@v2
-            - uses: actions/setup-node@v1
+            - uses: actions/checkout@v4
+            - uses: actions/setup-node@v4
+              with: { node-version: '18' }
             - run: yarn install --non-interactive --pure-lockfile
             - run: yarn check-types
 
@@ -40,8 +43,9 @@ jobs:
         runs-on  : ubuntu-latest
         defaults : { run: { working-directory: ./client }}
         steps    :
-            - uses: actions/checkout@v2
-            - uses: actions/setup-node@v1
+            - uses: actions/checkout@v4
+            - uses: actions/setup-node@v4
+              with: { node-version: '18' }
             - run: yarn install --non-interactive --pure-lockfile
             - run: yarn test --colors --coverage --passWithNoTests
 
@@ -50,40 +54,59 @@ jobs:
         runs-on  : ubuntu-latest
         defaults : { run: { working-directory: ./server }}
         steps    :
-            - uses: actions/checkout@v2
+            - uses: actions/checkout@v4
             - uses: shivammathur/setup-php@v2
               with:
-                  php-version : 7.4
-                  extensions  : dom, mbstring, pdo, intl, simplexml
+                  php-version : 8.1
+                  extensions  : dom, mbstring, pdo, intl-74.2, simplexml
                   coverage    : none
             - run: composer install --no-interaction --no-progress
             - run: composer lint
 
-    server-unit-tests:
-        name     : "Serveur: Tests unitaires (PHP ${{ matrix.php }})"
+    server-static-analysis:
+        name     : "Serveur: Static analysis"
         runs-on  : ubuntu-latest
-        strategy :
-            matrix:
-                php: [7.3, 7.4, 8.0]
         defaults : { run: { working-directory: ./server }}
-        services :
+        steps    :
+            - uses: actions/checkout@v4
+            - uses: shivammathur/setup-php@v2
+              with:
+                  php-version : 8.1
+                  extensions  : dom, mbstring, pdo, intl-74.2, simplexml
+                  coverage    : none
+            - run: composer install --no-interaction --no-progress
+            - run: composer phpstan
+
+    server-unit-tests:
+        name: "Serveur: Tests unitaires (PHP ${{ matrix.php }})"
+        runs-on: ubuntu-latest
+        env:
+            DB_HOST: 127.0.0.1
+            DB_TEST: Loxya-Test
+            DB_USER: root
+            DB_PASS: root
+            DB_PORT: 3306
+        strategy:
+            matrix:
+                php: [8.1, 8.2, 8.3]
+        defaults: { run: { working-directory: ./server }}
+        services:
             mysql:
                 image: mysql:5.7
                 env:
-                    MYSQL_DATABASE: robert2_test
+                    MYSQL_DATABASE: Loxya-Test
                     MYSQL_ROOT_PASSWORD: 'root'
                 ports:
                     - 3306
                 options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=3
         steps:
-            - uses: actions/checkout@v2
+            - uses: actions/checkout@v4
             - uses: shivammathur/setup-php@v2
               with:
                   php-version : ${{ matrix.php }}
-                  extensions  : dom, mbstring, pdo, intl, simplexml
+                  extensions  : dom, mbstring, pdo, intl-74.2, simplexml
                   coverage    : xdebug
             - run: composer install --no-interaction --no-progress
-            - run: cp ../.github/workflows/ci_settings.json ./src/App/Config/settings.json
-            - run: ./vendors/bin/phpunit --coverage-text
+            - run: ./vendors/bin/phpunit -d --without-creating-snapshots
               env:
                   DB_PORT: ${{ job.services.mysql.ports[3306] }}

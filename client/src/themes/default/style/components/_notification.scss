@@ -1,0 +1,63 @@
+.Notifications {
+    // Note: Augmente la spécificité (pour surcharger la définition de `.toasted-container`).
+    &#{&} {
+        min-width: 100%;
+        padding: 0 10px;
+
+        &.top-center {
+            top: 10px;
+        }
+
+        .Notification {
+            margin-top: 0;
+
+            + .Notification {
+                margin-top: 10px;
+            }
+        }
+
+        @media (min-width: $screen-mobile) {
+            min-width: auto;
+        }
+    }
+}
+
+.Notification {
+    // Note: Augmente la spécificité (pour surcharger la définition de `.toasted`).
+    &#{&}.toasted-primary {
+        padding: 8px 10px;
+        border-radius: $border-radius-normal;
+        font-size: 1rem;
+
+        &.error {
+            // TODO: Revenir à des variables globales.
+            background-color: rgba(#911d0a, 0.7);
+        }
+
+        &.success {
+            // TODO: Revenir à des variables globales.
+            background-color: rgba(#477000, 0.7);
+        }
+
+        .action {
+            margin-left: $spacing-medium;
+            color: $text-base-color;
+            font-size: 1rem;
+            font-weight: 400;
+            letter-spacing: normal;
+            opacity: 0.7;
+            text-transform: none;
+
+            &:hover {
+                color: $text-base-color;
+                text-decoration: none;
+                opacity: 1;
+            }
+        }
+
+        @media (min-width: $screen-mobile) {
+            padding-right: 20px;
+            padding-left: 20px;
+        }
+    }
+}

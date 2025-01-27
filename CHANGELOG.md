@@ -4,6 +4,491 @@ Tous les changements notables sur le projet sont documentés dans ce fichier.
 
 Ce projet adhère au principe du [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 1.0.4 (2025-01-27)
+
+- Corrige l'ordre des bénéficiaires associés à un événement, pour que le bénéficiaire principal reste
+  en première position si plusieurs bénéficiaires sont présents.
+
+## 1.0.3 (2024-12-18)
+
+- Rétablit le champ `e-mail` dans le formulaire de création / modification de bénéficiaire.
+
+## 1.0.2 (2024-12-10)
+
+- Corrige l'étape 3 de l'assistant d'installation.
+
+## 1.0.1 (2024-12-09)
+
+- Corrige un problème avec l'affichage des remises de matériel dans les devis et factures.
+
+## 1.0.0 (2024-12-06)
+
+- Ajoute une popup avec plus d'informations sur le matériel au survol de la référence et du nom du matériel sur le listing du matériel.
+- Améliore la prise en charge des fichiers CSV dans l'import des bénéficiaires (notamment ceux générés via Windows ou Microsoft 365) (Premium).
+- Corrige le rafraîchissement de la liste des tags dans les filtres après ajout, restoration ou suppression.
+- La barre du menu principal a été améliorée, et le menu utilisateur a été déplacé en bas de cette barre de menu.
+- Les pages "Catégories" et "Tags" ont été déplacées dans la page "Paramètres".
+- Un sélecteur, placé tout en haut à gauche de l'écran quand il existe plusieurs parcs, permet de choisir l'un de ces parcs comme contexte d'utilisation global. Ce contexte permet de filtrer les listes de matériel selon le parc choisi, ou de remplir automatiquement le champ "parc" dans les formulaires de création de matériel, ou d'unité de matériel (Premium).
+- Corrige quelques problèmes liés à la restriction des parcs aux utilisateurs (Premium).
+- Dans l'onglet "Historique" de la fenêtre des événements et réservations, est affiché l'historique de toutes les opérations effectuées sur les événements et les réservations (Premium).
+  Cet historique est accessible uniquement par les utilisateurs ayant un accès "administration", et montre une liste horodatée des opérations suivantes (avec la personne ayant effectué l'opération) :
+    - création de l'événement ou de la réservation,
+    - modification des informations de l'événement,
+    - ajout ou suppression de matériel dans la liste,
+    - modification de quantité de matériel dans la liste,
+    - confirmation ou remise en attente de l'événement,
+    - approbation de la réservation,
+    - assignation ou désaffectation des bénéficiaires ou des techniciens de l'événement,
+    - création des devis et des factures,
+    - clôture ou annulation de l'inventaire de départ
+    - clôture ou annulation de l'inventaire de retour,
+    - duplication de l'événement,
+    - envoi de la liste du matériel au(x) bénéficiaire(s),
+    - envoi de la fiche de sortie aux techniciens de l'événement,
+    - envoi d'un e-mail de rappel en cas de non-retour du matériel à temps,
+    - archivage, ou désarchivage.
+- Les caractéristiques spéciales peuvent être liées aux unités de matériel, en plus du matériel (Premium).
+  Lors de l'édition d'une caractéristique spéciale, il suffit de choisir sa portée ("matériel", "unités de matériel", ou les deux). Les valeurs des caractéristiques spéciales des unités de matériel peuvent être définies dans le formulaire d'édition des unités de matériel. Bien sûr, la visibilité d'une caractéristique limitée à certaines catégories dépend de la catégorie du matériel lié à l'unité. Quand une caractéristique spéciale numérique totalisable est liée au matériel et aux unités de matériel, le calcul du total utilise les valeurs des caractéristiques des unités de matériel en priorité, et n'ajoute celles du matériel lui-même que pour le matériel en excédent (Premium).
+- En cliquant sur une ligne de la liste des unités de matériel (ou sur le bouton "œil" en bout de ligne), une fenêtre contenant tous les détails de l'unité s'affiche (Premium).
+- Un nouveau type a été ajouté pour les caractéristiques spéciales : "texte multi-lignes". Ce type de donnée permet de saisir un texte plus long que pour le type "texte", et permet les sauts de ligne.
+- Le nombre d'heures d'exploitation de chaque unité de matériel (Premium) est affiché dans la liste des unités (onglet "unités" de la fiche matériel), ainsi que dans la nouvelle fenêtre "détails de l'unité".
+- Les groupes d'accès des utilisateurs ont été remaniés ainsi : le groupe "admin" est maintenant l'accès _"Administration"_, le groupe "membre" est maintenant l'accès _"Gestion"_, et le groupe "visiteur" devient l'accès _"Consultation du planning général"_.
+  Un nouveau type d'accès nommé _"Consultation de son planning"_ a été ajouté, permettant de n'afficher que les données de planning qui concernent uniquement l'utilisateur lui-même.
+- Les techniciens peuvent être liés à un compte utilisateur, qui leur permet de se connecter au logiciel. Par défaut, le groupe _"Consultation de son planning"_ est utilisé : ils peuvent ainsi consulter leur propre planning, rédiger des notes sur les événements dans lesquels ils sont assignés, mais ne peuvent pas modifier les autres informations de l'événement et n'ont pas accès à l'onglet "Historique" (Premium).
+- Il est possible de lier un compte utilisateur existant à une fiche technicien ou bénéficiaire. Il n'est donc plus nécessaire de créer un nouveau compte pour cela. (Premium)
+- Améliore les messages d'erreurs dans les formulaires.
+- Affiche les numéros de page dans le pied-de-page des documents PDF.
+- Améliore la configuration des cookies pour permettre l'intégration (par exemple dans Notion). NOTE : Uniquement possible dans les contexte sécurisés ou l'application est installée derrière un certificat TLS/SSL et donc accessible via une URL du type `https://...`.
+- La facturation a été revue et améliorée :
+  - La configuration du logiciel permet désormais de définir plusieurs tarifs dégressifs, les taxes et groupes de taxes.
+    (Un groupe de taxes étant la réunion de plusieurs taxes, appliquées en même temps, par exemple une T.V.A à 20% + Une participation écologique à prix fixe)
+  - Chaque matériel peut utiliser son propre tarif dégressif (ou aucun), sa propre taxe, groupe de taxe ou pas de taxe.
+  - La remise globale des événements et réservations se configure dorénavant dans l'édition de l'événement ou la réservation 
+    à la nouvelle étape "Facturation" (voir plus bas).
+  - Le prix du matériel peut maintenant être personnalisé directement dans les réservations et événements.
+  - Des lignes de facturation supplémentaires peuvent désormais être ajoutées aux devis et factures des événements et réservations.
+  - L'édition des devis pour les réservations est maintenant disponible.
+  - Il est maintenant possible d'appliquer des remises au niveau de chaque matériel dans les événements et réservations, en plus de la remise globale.
+  - Le mode de calcul des factures et devis a changé (ceci n'impacte évidemment pas les factures / devis déjà édités) :
+    Avant, vu que le tarif dégressif était le même partout, le calcul était : 
+    - Pour chaque matériel : quantité x prix unitaire = Total arrondi à deux chiffres après la virgule.
+    - Une fois fait pour chaque matériel, somme de ces totaux puis multiplication par le tarif dégressif global, arrondi 
+      du résultat à deux chiffres après la virgule. Celui-ci constituait donc le total hors remise globale.
+    - Si remise globale, application de celle-ci, puis obtention du total hors taxes arrondi.
+    - Si T.V.A, application de celle-ci pour obtenir le total T.T.C arrondi.
+    Maintenant, chaque matériel peut avoir son propre tarif dégressif. Le calcul se passe donc ainsi:
+    - Pour chaque matériel : Prix unitaire x Tarif dégressif, obtention d'un prix pour la période de réservation / de l'événement, 
+      arrondi à deux chiffres après la virgule puis multiplié par la quantité et à nouveau arrondi pour avoir le total pour le
+      matériel (si remise sur le matériel, application de la remise puis à nouveau arrondi pour avoir le total final pour le matériel).
+    - Une fois fait pour chaque matériel, somme de ces totaux pour obtenir le total hors remise globale, arrondi.
+    - Si remise globale, application de celle-ci, puis obtention du total hors taxes arrondi.
+    - Si taxes, application de celles-ci pour chaque matériel puis déduction de la remise globale éventuelle pour obtenir le total T.T.C arrondi.
+- Lors de l'ajout d'un matériel à un événement / une réservation, son nom, sa référence, son prix unitaire et son tarif dégressif sont dorénavant "figés" dans l'événement ou la réservation, ceci permettant d'éviter que lors du renommage ou de l'ajustement d'un prix d'un matériel, les événements passés prennent ces nouvelles valeurs, qui n'étaient pas effectives "à l'époque". De la même manière, cela permet, pour une réservation ou un événement futur dont le prix total (et donc celui de chaque matériel) a été accepté par un client, d'éviter de modifier ces prix acceptés, même en cas de hausse de prix à posteriori. Bien sûr l'interface propose donc maintenant de "resynchroniser" ces éléments avec les dernières informations du matériel et vous indique qu'une information est "désynchronisée" en la soulignant en bleu dans l'édition d'une réservation ou d'un événement.
+- Dans la page de modification des événements, une nouvelle étape "Facturation" a été ajoutée après celle du matériel, pour pouvoir ajuster les montant de chaque matériel et ajouter des lignes additionnelles aux devis et factures qui seront générées pour l'événement.
+- Un bouton "modifier" dans la fenêtre des réservations (Premium) permet d'accéder à une nouvelle page de modification de la réservation, similaire à celle des événements, avec 4 étapes :
+    - 1. Informations (pour modifier les dates de la réservation)
+    - 2. Matériel (pour modifier la liste du matériel de la réservation)
+    - 3. Facturation (pour gérer les tarifs du matériel et les lignes additionnelles)
+    - 4. Récapitulatif (pour consulter l'ensemble des informations de la réservation)
+- Des codes-barres peuvent être générés pour le matériel identifié de manière groupée (donc non-unitaire) (Premium).
+  Scanner un code-barres de ce type a pour effet d'ajouter +1 quantité dans l'édition de la liste de matériel d'un événement, d'une réservation ou d'un modèle de liste. Dans les inventaires de départ et retour, cela ajoute +1 quantité pour le matériel groupé uniquement (car pour le matériel unitaire, il faut toujours scanner explicitement l'unité qui sort / revient).
+- Un bouton "Rechercher" en haut du menu principal permet de rechercher un nom ou une référence de matériel ou d'une unité de matériel, ainsi que d'utiliser le scanner de code-barres depuis n'importe quelle page du logiciel, pour obtenir toutes les informations du matériel scanné ou recherché (photo, description, quantités, caractéristiques, tags...), la liste de ses unités, les événements ou réservations dans lesquels il est utilisé actuellement, et l'éventuel inventaire de départ ou de retour qui doit être effectué avec ce matériel (Premium).
+- La recherche de matériel retourne maintenant le matériel dont la référence des unités contient le terme recherché, ou dont le numéro de série est exactement le terme recherché (Premium).
+
+## 0.24.4 (2024-05-30)
+
+- Correction d'un bug dans la fonctionnalité de recherche des tableaux lorsque ceux-ci contiennent des dates.
+
+## 0.24.3 (2024-05-23)
+
+- Résolution d'un problème de suppression des assignations des techniciens lorsque la 
+  nouvelle période ne permet plus de garantir au moins une assignation.
+- Utilise la valeur de la configuration d'email `from` pour le champ `reply-to` lors de l'envoi des e-mails avec Loxya.
+
+## 0.24.2 (2024-05-22)
+
+- Rétablit l'information du parc, qui avait disparu de la fiche matériel.
+
+## 0.24.1 (2024-05-14)
+
+- Corrige le click sur les éléments déroulant sur mobile / tablette.
+- Corrige la recherche dans les listings quand des caractères spéciaux sont utilisés.
+
+## 0.24.0 (2024-05-09)
+
+- __[CHANGEMENT CRITIQUE]__ Loxya requiert maintenant au minimum PHP 8.1 pour fonctionner.
+- L'application utilise maintenant le nom "Loxya" partout (plutôt que "Loxya (Robert2)").
+- Ajoute le support PHP 8.2 et PHP 8.3.
+- Le compte des événements pour les unités de matériel tient compte des événements supprimés (Premium).
+- Les événements supprimés ne sont plus affichés dans le calendrier des techniciens.
+- Dans la fiche bénéficiaire, un onglet "Historique" affiche la liste des e-mails qui ont été envoyés
+  au bénéficiaire. Dans les fenêtres des événements et réservations, un onglet "Historique" affiche
+  la liste des messages de rappels qui ont été envoyés aux bénéficiaires (Premium).
+- Prend en charge l'utilisation d'un wildcard (`*`) pour configurer la création automatique du
+  bénéficiaire lié à l'utilisateur se connectant via un service externe (CAS ou SAML2) (Premium).
+- Ajout de la possibilité de définir les événements à l'heure près. Ceci se choisit à la première
+  étape de l'édition d'un événement, en cochant, ou non, "Jours entiers?" (activé par défaut)
+  dans le sélecteur des dates de l'événement. 
+- Pour les réservations publiques, l'administrateur a la possibilité de configurer les
+  réservations pour qu'elles soient basées sur des créneaux horaires précis ou sur des
+  journées entières. Cette configuration est disponible dans les paramètres de réservation (Premium).
+- Ajoute la possibilité de distinguer la période de l'événement (et donc de facturation si 
+  celle-ci est activée), parfois appelée "Période d'exploitation", de la période de mobilisation
+  du matériel. Ceci peut par exemple être utile pour inclure le temps nécessaire à l'installation
+  et à la désinstallation du matériel avant et après l'événement.  
+  La planification de cette période de mobilisation peut être effectuée lors de l'édition d'un événement. 
+  Quoi qu'il en soit, la mobilisation du matériel commencera dès que l'inventaire de départ aura été marqué
+  comme terminé (si celui-ci est effectué avant la date de mobilisation initialement prévue).
+  Pour ce qui est du retour, c'est l'inventaire de retour qui permettra de signifier que le matériel est
+  de retour en stock (ou bien la date de fin de mobilisation prévue en l'absence d'inventaire de retour
+  avant celle-ci).
+- __Attention__ lors de la mise à jour à l'étape de migration de la base de données, les dates
+  de mobilisation des événements existants qui ont un inventaire de départ et/ou de retour terminé
+  seront synchronisées avec les dates de ces inventaires. Si vous êtes abonné à une offre SaaS et que
+  vous ne souhaitez pas que ces dates soient modifiées, mais plutôt que ce soient les dates des inventaires
+  de départ et retour qui soient modifiées pour correspondre aux dates des événements, merci de _contacter
+  le support_ avant de demander la mise à jour.
+- Ajoute une page qui liste tous les événements (et réservations pour la Premium), avec une pagination,
+  une recherche intelligente sur le titre, le lieu et le bénéficiaire, et un filtre par parc
+  et par catégorie.
+- Ajoute un paramètre utilisateur permettant de choisir la vue par défaut entre la frise
+  temporelle (calendrier), et la liste paginée des événements et réservations.
+- Lors de la modification des dates d'un événement (que ce soit en le déplaçant, ou en le faisant commencer 
+  plus tôt ou terminer plus tard), les assignations des techniciens ne seront plus déplacées par l'application
+  car celle-ci n'avait aucune garantie que le technicien était réellement disponible aux nouvelles dates et heures assignées
+  (qui pouvaient d'ailleurs se retrouver au beau milieu de la nuit en fonction de la nouvelle date et heure de début de l'événement).
+  Pour chaque assignation de technicien:
+  - Si celle-ci est encore "réalisable" pendant les nouvelles dates sans changer quoi que ce soit, celle-ci sera conservée inchangée.
+  - Si les nouvelles dates impactent en partie l'assignation, celle-ci sera tronquée / raccourcie.
+  - Si les nouvelles périodes n'incluent plus du tout l'assignation, celle-ci sera supprimée.
+  Une alerte a été ajoutée au moment d'éditer les dates pour rappeler à l'opérateur d'ajuster les assignations 
+  après avoir changé les dates.
+- Lors de la duplication des événements, l'assignation des techniciens ne sera plus dupliquée automatiquement.
+  En effet, l'application n'avait aucune garantie que les techniciens assignés au précédent événement étaient réellement 
+  disponibles aux nouvelles dates et heures dupliqués. L'assignation de techniciens nécessite dans la majorité des cas
+  une validation humaine, d'autant qu'en fonction de l'heure de départ du nouvel événement, les assignations pouvaient se
+  retrouver en dehors des heures ouvrables.
+- Les réservations publiques (Premium) prennent maintenant en compte les heures et jours d'ouverture de l'établissement.
+  Pour mettre en place ces plages sur votre instance hébergée par nos soins, n'hésitez pas à prendre contact avec nos services.
+- Affiche le commentaire du demandeur dans la fenêtre d'une réservation, onglet "informations" (Premium).
+- Corrige la suppression définitive d'un utilisateur ayant un bénéficiaire (ou technicien) lié dans la corbeille.
+- Corrige le comportement des inventaires de retour quand un matériel qui a été supprimé est
+  présent dans la liste.
+- Ajoute la prise en charge de l'envoi des e-mails via le service inclut dans les abonnements SaaS.
+- Ajoute une section dans les paramètres généraux, onglet "fiches de sortie", qui permet de choisir
+  si on veut afficher ou non les colonnes "valeur de remplacement", "description du matériel",
+  les "tags" associés au matériel, numéros de série des unités (Premium), et la photo du matériel.
+- Ajoute la possibilité de joindre la fiche de sortie aux e-mails qui notifient les bénéficiaires que leur
+  réservation a été approuvée (choix dans les paramètres globaux, onglet "Réservations en ligne") (Premium).
+- Dans la fenêtre d'un événement ou d'une réservation, un nouveau bouton permet d'envoyer la liste
+  du matériel par e-mail au(x) bénéficiaire(s) (Premium).
+- À l'étape 3 ("techniciens") de l'édition des événements, un champ de recherche permet de chercher
+  un technicien dans la liste, par son nom, son prénom ou son adresse e-mail.
+- À l'étape 4 de l'édition des événements, les détails du matériel (avec la photo) sont affichés quand le
+  curseur de la souris survole une ligne dans la liste.
+- Dans la fenêtre d'un événement, un nouveau bouton permet d'envoyer la fiche de sortie en PDF à
+  tous les techniciens qui sont assignés à l'événement (Premium).
+- Dans la fenêtre d'un événement ou d'une réservation, un nouveau bouton permet de copier le permalien
+  de la fiche de sortie dans le presse-papier. Toute personne utilisant ce lien pourra télécharger
+  la fiche de sortie actualisée, au format PDF, même sans être connecté au logiciel (Premium).
+- Il est maintenant possible de remettre les inventaires de départ et de retour en attente.
+  Cela revient à annuler leur état "terminé" et à rétablir le stock en réintégrant les quantités cassés.
+
+## 0.23.4 (2024-06-10)
+
+- Corrige le tri du matériel selon la quantité.
+
+## 0.23.3 (2024-04-11)
+
+- Limite le nombre de vérifications différées simultanées du matériel manquant (2 par défaut).
+
+## 0.23.2 (2024-02-12)
+
+- Sur le calendrier, la vérification du matériel manquant est différée pour optimiser les temps de chargement.
+- Dans les devis et factures, le calcul de la remise s'applique sur le montant total, non plus sur le total journalier.
+
+## 0.23.1 (2023-12-16)
+
+- Les fiches de sorties des événements peuvent être éditées même en l'absence d'un bénéficiaire.
+- Désactive TEMPORAIREMENT la vérification de l'absence de pénuries dans les inventaires de départ / retour
+  en attendant la gestion horaire des événements / réservations (sans quoi cela pouvait être problématique 
+  pour les événements / réservations avec retour / départ le même jour)
+- Corrige une incohérence au niveau de la limitation de la remise applicable aux événements contenant du
+  matériel non remisable. Le système proposait de définir un pourcentage de remise sur la totalité du prix
+  (en fonction du matériel remisable) mais limitait l'application de ce pourcentage à la partie remisable (#402).
+  Seuls les nouveaux devis / factures utiliseront ce nouveau mode de fonctionnement, plus logique, les anciens
+  devis / factures ne seront évidemment pas modifies (les données étant de toute façon figées).
+- Corrige une erreur 403 qui s'affichait lorsqu'un serveur HTTP de type Apache était utilisé pour "servir" l'application.
+
+## 0.23.0 (2023-12-14)
+
+- Mise à jour des dépendances du projet.
+- Ajoute la prise en charge complète de l'authentification SAML 2.0 (Premium).
+- La clé de configuration `apiUrl` a été renommée `baseUrl` dans le fichier de configuration.  
+  L'ancien nom est toujours pris en charge pour le moment pour une question de rétro-compatibilité. 
+  (il sera toutefois supprimé dans une future version, pensez à mettre à jour vos 
+  `settings.json` si vous ne disposez pas d'une offre SaaS)
+- Ajoute une commande permettant d'envoyer un e-mail de test via la console (Premium).
+- L'import de bénéficiaires en masse est maintenant possible depuis un fichier CSV (Premium).
+- Corrige l'affichage des disponibilités des techniciens à l'étape 3 de la modification d'événement.
+- Ajoute un endpoint `/healthcheck` (désactivé par défaut) pour vérifier l'état de l'instance,
+  et la date de dernière modification de son matériel, événements ou réservations.
+- Corrige le champ de recherche des demandes de réservations.
+- Permet la modification du matériel des réservations jusqu'au dernier jour de sortie (Premium).
+- Prise en charge des inventaires de départ des événements et réservations.
+- Corrige un souci lors de la sauvegarde d'une unité de matériel avec une référence déjà 
+  existante pour le même matériel (l'erreur de sauvegarde faisait penser à un bug de l'application).
+- Il est maintenant possible de chercher dans les événements par lieu.
+- Prise en charge des retour à la ligne dans l'affichage de description des matériels.
+- Corrige l'affichage et le tri des quantités cassées dans le matériel.
+- Ajoute une page permettant de consulter les informations d'un bénéficiaire, son historique de commandes,
+  ainsi que la liste des devis et factures qui lui ont été adressés.
+- Corrige la duplication d'événement lorsque des unités de l'événement d'origine sont 
+  déjà utilisées au même moment que dans le nouvel événement (Premium).
+- Corrige la duplication d'événement lorsque des techniciens de l'événement d'origine sont 
+  déjà mobilisés au même moment que dans le nouvel événement (voir #346).
+- Améliore les sélecteurs de dates, notamment en permettant de choisir des périodes pré-définies quand 
+  c'est utile (par exemple dans les filtres de période matériels et techniciens).
+- Corrige un problème de performance lors de la récupération des réservations et événements liés
+  aux matériels et bénéficiaires. La récupération se fait maintenant de manière séquentielle (voir #387).
+
+## 0.22.2 (2023-08-11)
+
+- Enlève le tri par liste dans les fiches de sorties classées par parc (Premium).
+- Supprime la contrainte d'unicité sur l'e-mail de la table `persons` (#394).
+- Ajoute des observers qui suppriment automatiquement les enregistrements "orphelins"
+  de la table `persons` (#394).
+- Corrige un problème d'affichage impactant les quantités dans le sélecteur de 
+  matériel lors de la suppression d'un matériel de la liste.
+
+## 0.22.1 (2023-08-04)
+
+- L'utilisation d'un champ de tri non autorisé ne provoque plus de dysfonctionnement dans les pages de listing.
+- Corrige les boutons de modification et suppression des emplacements de parc (Premium).
+
+## 0.22.0 (2023-08-03)
+
+- Ajoute la possibilité de choisir un emplacement de rangement pour chaque matériel
+  au sein d'un parc, et affiche cette information dans les fiches de sorties et les
+  inventaires de retour (Premium #294).
+- Dans les inventaires de retour des événements, un bouton permet d'envoyer une notification
+  par e-mail aux techniciens assignés à l'événement, tant que le matériel n'a pas été
+  complètement retourné, ou que l'inventaire n'est pas terminé (Premium #293).
+- Dans le calendrier, un nouveau filtre permet de filtrer les événements par catégorie
+  du matériel qu'il contient (Premium #297).
+- Affiche la durée des événements et réservations dans l'onglet "périodes de réservation"
+  de la fiche matériel (Premium #204).
+- Ajoute la notion de technicien "préparateur de commande" : à l'étape 1 de la modification
+  des événements, on peut choisir un préparateur de commande. Celui-ci sera ensuite notifié
+  automatiquement la veille du premier jour de l'événement, par un e-mail qui contient la
+  fiche de sortie en pièce jointe (Premium #295).
+- Corrige le calcul du prochain numéro de facture en prenant en compte le numéro des factures 
+  supprimées.
+- Améliore grandement les performances de calcul des disponibilités du matériel. Cela se traduit
+  par des temps de chargement divisés par 5 (donc un gain de 500% !) dans le calendrier, mais aussi
+  à l'étape 4 de l'édition d'événement, et dans l'onglet "périodes de réservation" du matériel (Premium #321).
+- Ajoute la possibilité de télécharger la fiche de sortie avec une page par parc de matériel (Premium #290).
+- Les événements peuvent maintenant avoir plusieurs sous-listes de matériel distinctes (Premium #289).
+
+## 0.21.2 (2023-05-15)
+
+- Corrige l'édition des modèles de liste (Premium).
+- Corrige la modification du matériel des événements qui se terminent le jour courant.
+
+## 0.21.1 (2023-05-15)
+
+- Corrige les inventaires de retour qui n'affichaient plus la liste du matériel.
+- Corrige la prise en charge de la configuration des fichiers autorisés à l'upload côté Front (Premium #313).
+- Corrige le comportement des onglets dans les fiches matériel et technicien.
+
+## 0.21.0 (2023-05-11)
+
+- Dans la liste du matériel, le champ "Afficher les quantités restantes à date" est pré-rempli avec
+  la date courante, et la quantité disponible est affichée à côté de la quantité totale en stock,
+  pour faciliter la comparaison.
+- Corrige le comportement de la pagination des listings quand on essaye de charger une plage de données
+  qui n'existe pas ou plus (Premium #229).
+- Les caractéristiques spéciales peuvent être totalisées en bas de la liste du matériel
+  de la fiche de sortie des événements et réservations (Premium #266). Un nouveau champ "Totalisable"
+  permet de contrôler si la caractéristique doit être utilisée ou non dans les totaux.
+- Tous les champs des caractéristiques spéciales du matériel peuvent être modifiés, à l'exception du
+  champ "type", qui ne peut pas changer.
+- Ajout de la possibilité de personnaliser les échantillons de couleurs proposés dans le sélecteur de 
+  couleur via la clé `colorSwatches` dans configuration JSON du projet (`settings.json`).
+- Il est maintenant possible de rattacher des documents aux techniciens, aux réservations et aux 
+  événements (Premium #264, #298).
+- L'URL de la partie "réservation en ligne" (/external) peut être copiée directement depuis la page des
+  paramètres de la réservation en ligne.
+- Un nouvel onglet dans les paramètres du logiciel permet de contrôler le comportement des inventaires
+  de retour : soit l'inventaire est vide au départ, et doit être rempli manuellement (comportement par
+  défaut), soit les quantités retournées sont pré-remplies, et il faut décocher ce qui n'est pas revenu.
+- Ajoute la possibilité de modifier la liste du matériel des réservations approuvées ou en attente,
+  tant que la facturation n'est pas activée (Premium #287).
+- Les unités de matériel qui sont utilisées dans les événements ou les réservations sont à nouveau
+  affichées dans l'onglet "Périodes de réservation" de la fiche matériel (Premium #284).
+- Les références des unités utilisées dans un événement ou une réservation sont affichées dans
+  l'onglet "materiel" de la fenêtre de l'événement ou réservation (Premium #284).
+- Quand l'utilisateur connecté a des parcs restreints et qu'il n'a accès qu'à un seul parc de matériel,
+  le filtre par parc du calendrier est pré-rempli avec ce parc (Premium #163).
+
+## 0.20.6 (2023-04-14)
+
+- Pour les réservations en ligne, le comportement du délai minimum avant réservation a été revu
+  pour permettre la création d'une réservation pour le jour même.
+- Dans la réservation en ligne, l'ajout au panier d'un matériel faisant partie d'un parc
+  restreint n'est plus possible même via l'API (Premium #163).
+- Il est maintenant possible d'assigner un technicien dès minuit du premier jour de l'événement,
+  et jusqu'à minuit du dernier jour. On peut également assigner le même technicien sur
+  des créneaux horaires qui se suivent (premium #288).
+
+## 0.20.5 (2023-03-28)
+
+- Corrige un problème d'accès aux événements du calendrier pour les utilisateurs ne faisant pas
+  partie du groupe "administrateurs".
+- Lors de l'assignation des techniciens à un événement, les indisponibilités des techniciens affichent
+  maintenant le bon titre des événements sur lesquels ils sont déjà assignés.
+
+## 0.20.4 (2023-03-24)
+
+- Les utilisateurs du groupe "visiteur" ne voient plus l'entrée de menu "Demandes de réservation",
+  car ils n'y ont pas accès.
+- Quand la liste du matériel est filtrée par parc, le calcul de la quantité en panne du matériel unitaire
+  prend maintenant en compte ce filtre (Premium #169).
+
+## 0.20.3 (2023-03-20)
+
+- Les unités de matériel sont maintenant triées par références (Premium #271).
+- Utilise maintenant des dates au format britannique ([Jour]/[Mois]/[Année]) plutôt 
+  qu'americain ([Mois]/[Jour]/[Année]) lorsque l'anglais est utilisé comme langue de l'interface.
+
+## 0.20.2 (2023-03-17)
+
+- Spécifie que la version de PHP requise doit être 64 bits.
+- Ajoute une migration qui met le champ `is_billable` de tous les événements à `false` quand la facturation
+  est désactivée dans la configuration globale.
+- Corrige un problème (introduit dans la version 0.20.0) dans le calcul des disponibilités 
+  du matériel pour le matériel non unitaire qui avait tendance à sous-évaluer les quantités 
+  restantes en stock. 
+
+## 0.20.1 (2023-03-16)
+
+- Corrige un problème qui empêchait de lancer la mise à jour de la base de données sur certaines installations.
+
+## 0.20.0 (2023-03-14)
+
+- __[CHANGEMENT CRITIQUE]__ Loxya (Robert2) requiert maintenant au minimum PHP 8.0 pour fonctionner (OSS #375).
+- Ajoute le support PHP 8.1 (OSS #328).
+- Change le nom de l'application en "Loxya (Robert2)" partout.
+- Corrige divers problèmes de sécurité liés aux comptes utilisateurs.
+- Corrige la traduction anglaise du mot "facture" ("bill" → "invoice") partout (OSS #377).
+- Améliore le système de traduction, et formate des dates correctement pour la langue anglaise (OSS #378).
+- Corrige la copie via le bouton "Copier" dans le champ d'URL du calendrier public (OSS #369).
+- Ajoute l'extension `iconv` dans la liste des extensions requises lors de l'installation (OSS #371).
+- Corrige le filtre sur les périodes de disponibilités dans le listing des techniciens qui ne prenait pas 
+  correctement en compte les événements dont la date de début était antérieure à la date de début du filtre 
+  (+ idem pour les dates de fin).
+- Corrige, sur la page de calendrier sur mobile, l'affichage de la fenêtre de détails des événements
+  lors du double-click (OSS #359).
+- Dans la fenêtre des événements, les totaux affichent plus de détails (montants H.T. et T.T.C., et remise éventuelle).
+- Dans la fenêtre des événements, les coordonnées du bénéficiaire principal sont affichées dans l'onglet "informations".
+- Dans la liste du matériel d'un événement, améliore l'affichage des quantités utilisées.
+
+### Changements spécifiques à la variante Premium
+
+- __[CHANGEMENT CRITIQUE]__ Dorénavant, si aucun groupe n'a pu être récupéré lors de la connexion CAS, l'utilisateur ne 
+  sera plus assigné au groupe "Visiteur" mais sera __déconnecté__. Pour rétablir le fonctionnement précédent, assignez la
+  valeur `visitor` à la nouvelle option `auth.CAS.defaultGroup`.
+- Corrige l'authentification CAS : le nom et le prénom des utilisateurs CAS sont maintenant obligatoires.
+- Il est maintenant possible de paramétrer le groupe assigné par défaut lorsqu'aucun groupe n'a 
+  pu être récupéré lors de la connexion CAS (via l'option de configuration `auth.CAS.defaultGroup`). 
+  Il est aussi possible d'empêcher la connexion lorsqu'aucun groupe n'a pu être récupéré (Premium #38).
+- Une nouvelle option de configuration CAS `auth.CAS.beneficiaryGroups` permet d'associer la présence de certains 
+  groupes parmi les groupes CAS retournés avec la création d'un profil bénéficiaire pour l'utilisateur. Ceci ne
+  remplace pas le mapping du groupe vers un groupe Robert 2 / Loxya qu'il faudra quand même configurer.  
+  Par exemple, supposons que vous ayez un groupe CAS `Student` pour lequel vous souhaitez autorisé les réservations 
+  publiques (qui nécessitent donc un profil bénéficiaire). Vous pourrez configurer l'option `auth.CAS.beneficiaryGroups`
+  à `["Student"]` et l'option `auth.CAS.groupsMapping` à `{ "Student": "external" }`.  
+  Ceci aura pour effet d'autoriser la connexion de vos élèves en leur assignant un profil bénéficiaire et en autorisant
+  seulement l'accès à la partie réservation publique de l'application (et pas le panel d'administration).  
+  Si par contre, vous souhaitez leur donner accès au panel, vous pouvez tout à fait modifier `auth.CAS.groupsMapping` 
+  en spécifiant par exemple `{ "Student": "visitor" }`.
+- Les étiquettes passent maintenant du format 50x25mm à 50x24mm (Premium #197).
+- Les unités cassées sont maintenant considérées comme manquantes dans les événements.
+- Ajoute la possibilité de lier un utilisateur à un bénéficiaire depuis le formulaire d'édition bénéficiaire (Premium #182).
+- Ajoute les "réservations en ligne" : permettre aux bénéficiaires de faire eux-même des demandes de réservation du
+  matériel, grâce à leur compte personnel, dans une partie "externe" (Premium #182).
+- Ajoute le choix des utilisateurs du groupe "membre" pouvant approuver le matériel dans les demandes de réservation (Premium #182).
+- Un nouveau paramètre utilisateur a été ajouté : la possibilité de désactiver les notifications par e-mail (Premium #254).
+- Corrige le calcul du nombre d'articles en stock pour les parcs (Premium #224).
+- Dans la liste du matériel d'un événement, il est maintenant possible de scanner les unités cassées avec la scanette (Premium #178).
+
+## 0.19.3 (2022-10-28)
+
+- Améliore le temps de chargement des événements dans le calendrier (#210).
+
+## 0.19.2 (2022-07-29)
+
+- Un problème lors de la création du premier utilisateur dans le wizard d'installation a été corrigé (#367).
+- Dans la liste du matériel, le clic sur la référence ou le nom d'un matériel ouvre à nouveau sa page.
+- La génération des factures fonctionne même si tout le matériel de la liste a une valeur de remplacement totale de 0.
+- Il est possible de cliquer sur les noms des techniciens dans la liste pour voir leur fiche.
+
+## 0.19.1 (2022-07-19)
+
+- Corrige le titre de la page d'édition d'événement.
+- Corrige les erreurs de validation pour la création des devis et du matériel en mode prêt.
+- Corrige l'affichage des horaires de techniciens sur la fiche de sortie (#366).
+
+## 0.19.0 (2022-07-18)
+
+- Empêche la suppression des parcs qui contiennent du matériel (#362).
+- Le nom et le prénom des utilisateurs sont maintenant obligatoires (#356).
+- Pour le matériel, la catégorie est devenue une donnée facultative. Un matériel sans catégorie est donc classé sous le label 
+  "Non catégorisé" dans les listes. Lors de la suppression d'une catégorie, le matériel qui lui était assigné devient donc "non catégorisé".
+- Quand la liste du matériel des fiches de sortie est triée par catégories, celles-ci apparaissent maintenant par ordre alphabétique.
+- Un problème a été corrigé dans l'agenda ICS "public", qui rendait impossible son utilisation dans certains cas (notamment Google Agenda) (#360).
+
+## 0.18.1 (2022-03-29)
+
+- Corrige la page d'édition des techniciens.
+
+## 0.18.0 (2022-03-28)
+
+- __[CHANGEMENT CRITIQUE]__ Robert2 requiert maintenant au minimum PHP 7.4 pour fonctionner (#327).
+- Augmente la taille du champ `degressive_rate` des tables `bills` et `estimates` pour qu'il accepte une valeur jusqu'à 99999,99 (quand un événement est très long), au lieu de juste 99,99 (#329).
+- Ajoute la possibilité de configurer les données affichées dans les événements du calendrier 
+  via la page des paramètres de l'application (fin du ticket #302).
+- Il est maintenant possible de s'abonner depuis votre application de calendrier préférée (Google Agenda, Apple Calendrier, etc.) au calendrier Robert2 / Loxya. 
+  Pour plus d'informations, rendez-vous dans les paramètres de votre instance Robert2 / Loxya, onglet "Calendrier" (#326).
+- Corrige un problème de formatage des données de configuration lors de l'installation (#100).
+- Ajoute une limite de taille des fichiers uploadés dans la configuration générale (valeur par défaut 25 Mo) (#332).
+- Ouvre le détail du matériel au clic sur son nom ou sa référence dans la liste (#331).
+- Sur la fiche de sortie, supprime la mention inutile "autre matériel" de la liste du matériel triée par sous-catégories, quand la catégorie n'a aucune sous-catégorie (#319).
+- Sur la fiche de sortie, affiche l'adresse de la société du bénéficiaire (si elle existe), à la place de celle de la personne (#341).
+- Enlève la possibilité de trier sur la colonne "quantité restante" dans la liste du matériel (#324).
+- Corrige le comportement du sélecteur de la société associée au bénéficiaire, dans le formulaire d'édition, pour qu'il fonctionne avec un grand nombre de sociétés existantes (#340).
+- Corrige le tri des bénéficiaires par nom de la société (#342).
+- Corrige le problème de rafraîchissement du calcul du matériel disponible après changement des quantités dans l'édition des événements (#348).
+- Conserve la sélection des colonnes affichées dans les listings, même après un rechargement de la page (#144).
+
+## 0.17.1 (2022-01-06)
+
+- Corrige l'erreur de l'étape 5 du wizard d'installation (double boot du kernel).
+
+## 0.17.0 (2022-01-05)
+
+- Enlève la limite de caractères du champ "lieu" des événements (#300).
+- Google Maps est maintenant utilisé à la place de OpenStreetMap pour ouvrir les adresses (#300).
+- Utilise une période plutôt qu'une simple date pour le calcul des quantités disponibles du matériel (#301).
+- Il est maintenant possible de choisir ce qui est affiché ou non dans les événements sur le calendrier (#302).
+- Affiche le nom de l'utilisateur qui a créé l'événement dans la fenêtre d'événement.
+- Supprime automatiquement la sous-catégorie quand la catégorie change lors de la sauvegarde du matériel (#306).
+- Permet la création des inventaires de retour dès le premier jour des événements, sans pouvoir les terminer avant leur dernier jour (#307).
+- Ajoute un paramètre permettant d'afficher ou non les numéros légaux sur les fiches de sortie (#310).
+- Ajoute une colonne vide "Qté retour" dans la liste du matériel des fiches de sortie (#313).
+- Trie les listes de matériel imprimées selon la catégorie (en affichant leur nom) en plus des sous-catégories (#315).
+- Améliore les performances du chargement des événements du calendrier (de ~4 secondes à ~150 millisecondes sur un calendrier rempli) (#32).
+
 ## 0.16.2 (2021-11-04)
 
 - Corrige la normalisation des horaires d'assignation des techniciens.

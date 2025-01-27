@@ -1,9 +1,11 @@
 <?php
+declare(strict_types=1);
+
 use Phinx\Migration\AbstractMigration;
 
-class AddPictureToMaterials extends AbstractMigration
+final class AddPictureToMaterials extends AbstractMigration
 {
-    public function up()
+    public function up(): void
     {
         $table = $this->table('materials');
         $table
@@ -15,7 +17,7 @@ class AddPictureToMaterials extends AbstractMigration
             ->save();
     }
 
-    public function down()
+    public function down(): void
     {
         $table = $this->table('materials');
         $table

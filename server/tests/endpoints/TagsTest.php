@@ -1,152 +1,102 @@
 <?php
-namespace Robert2\Tests;
+declare(strict_types=1);
+
+namespace Loxya\Tests;
+
+use Fig\Http\Message\StatusCodeInterface as StatusCode;
+use Loxya\Models\Tag;
 
 final class TagsTest extends ApiTestCase
 {
-    public function testGetTags()
+    public static function data(?int $id = null)
+    {
+        return static::dataFactory($id, [
+            [
+                'id' => 1,
+                'name' => 'Premium',
+            ],
+            [
+                'id' => 2,
+                'name' => 'Vintage',
+            ],
+        ]);
+    }
+
+    public function testGetTags(): void
     {
         $this->client->get('/api/tags');
-        $this->assertStatusCode(SUCCESS_OK);
+        $this->assertStatusCode(StatusCode::STATUS_OK);
         $this->assertResponseData([
-            'pagination' => [
-                'current_page' => 1,
-                'from' => 1,
-                'last_page' => 1,
-                'path' => '/api/tags',
-                'first_page_url' => '/api/tags?page=1',
-                'next_page_url' => null,
-                'prev_page_url' => null,
-                'last_page_url' => '/api/tags?page=1',
-                'per_page' => $this->settings['maxItemsPerPage'],
-                'to' => 3,
-                'total' => 3,
-            ],
-            'data' => [
-                [
-                    'id' => 2,
-                    'name' => 'Beneficiary',
-                    'created_at' => null,
-                    'updated_at' => null,
-                    'deleted_at' => null,
-                ],
-                [
-                    'id' => 3,
-                    'name' => 'pro',
-                    'created_at' => null,
-                    'updated_at' => null,
-                    'deleted_at' => null,
-                ],
-                [
-                    'id' => 1,
-                    'name' => 'Technician',
-                    'created_at' => null,
-                    'updated_at' => null,
-                    'deleted_at' => null,
-                ],
-            ],
+            self::data(1),
+            self::data(2),
         ]);
 
         $this->client->get('/api/tags?deleted=1');
-        $this->assertStatusCode(SUCCESS_OK);
-        $this->assertResponsePaginatedData(0, '/api/tags', 'deleted=1');
+        $this->assertStatusCode(StatusCode::STATUS_OK);
+        $this->assertResponseData([]);
     }
 
-    public function testCreateTagWithoutData()
+    public function testCreateTagWithoutData(): void
     {
         $this->client->post('/api/tags');
-        $this->assertStatusCode(ERROR_VALIDATION);
-        $this->assertErrorMessage("Missing request data to process validation");
+        $this->assertStatusCode(StatusCode::STATUS_BAD_REQUEST);
+        $this->assertApiErrorMessage("No data was provided.");
     }
 
-    public function testCreateTagBadData()
+    public function testCreateTagBadData(): void
     {
         $this->client->post('/api/tags', ['foo' => 'bar']);
-        $this->assertStatusCode(ERROR_VALIDATION);
-        $this->assertValidationErrorMessage();
-        $this->assertErrorDetails([
-            'name' => [
-                "name must not be empty",
-                "name must have a length between 1 and 48"
-            ],
+        $this->assertApiValidationError([
+            'name' => "This field is mandatory.",
         ]);
     }
 
-    public function testCreateTagDuplicate()
+    public function testCreateTagDuplicate(): void
     {
-        $this->client->post('/api/tags', ['name' => 'Beneficiary']);
-        $this->assertStatusCode(ERROR_DUPLICATE);
-        $this->assertValidationErrorMessage();
+        $this->client->post('/api/tags', ['name' => 'Premium']);
+        $this->assertApiValidationError();
     }
 
-    public function testCreateTag()
+    public function testCreateTag(): void
     {
         $this->client->post('/api/tags', ['name' => 'New tag']);
-        $this->assertStatusCode(SUCCESS_CREATED);
+        $this->assertStatusCode(StatusCode::STATUS_CREATED);
         $this->assertResponseData([
-            'id'         => 4,
-            'name'       => 'New tag',
-            'created_at' => 'fakedTestContent',
-            'updated_at' => 'fakedTestContent',
-            'deleted_at' => null,
-        ], ['created_at', 'updated_at']);
+            'id' => 3,
+            'name' => 'New tag',
+        ]);
     }
 
-    public function testGetPersonsNotFound()
+    public function testDeleteAndDestroyTag(): void
     {
-        $this->client->get('/api/tags/999/persons');
-        $this->assertNotFound();
+        // - First call: soft delete.
+        $this->client->delete('/api/tags/1');
+        $this->assertStatusCode(StatusCode::STATUS_NO_CONTENT);
+        $softDeleted = Tag::withTrashed()->find(1);
+        $this->assertNotNull($softDeleted);
+        $this->assertNotEmpty($softDeleted->deleted_at);
+
+        // - Second call: actually DESTROY record from DB
+        $this->client->delete('/api/tags/1');
+        $this->assertStatusCode(StatusCode::STATUS_NO_CONTENT);
+        $this->assertNull(Tag::withTrashed()->find(1));
     }
 
-    public function testGetPersons()
-    {
-        $this->client->get('/api/tags/2/persons');
-        $this->assertStatusCode(SUCCESS_OK);
-        $this->assertResponsePaginatedData(1, '/api/tags/2/persons');
-    }
-
-    public function testGetMaterialsNotFound()
-    {
-        $this->client->get('/api/tags/999/materials');
-        $this->assertNotFound();
-    }
-
-    public function testGetMaterials()
-    {
-        $this->client->get('/api/tags/3/materials');
-        $this->assertStatusCode(SUCCESS_OK);
-        $this->assertResponsePaginatedData(3, '/api/tags/3/materials');
-    }
-
-    public function testDeleteAndDestroyTag()
-    {
-        // - First call : sets `deleted_at` not null
-        $this->client->delete('/api/tags/3');
-        $this->assertStatusCode(SUCCESS_OK);
-        $response = $this->_getResponseAsArray();
-        $this->assertNotEmpty($response['deleted_at']);
-
-        // - Second call : actually DESTROY record from DB
-        $this->client->delete('/api/tags/3');
-        $this->assertStatusCode(SUCCESS_OK);
-        $this->assertResponseData(['destroyed' => true]);
-    }
-
-    public function testRestoreTagNotFound()
+    public function testRestoreTagNotFound(): void
     {
         $this->client->put('/api/tags/restore/999');
-        $this->assertNotFound();
+        $this->assertStatusCode(StatusCode::STATUS_NOT_FOUND);
     }
 
-    public function testRestoreTag()
+    public function testRestoreTag(): void
     {
-        // - First, delete tag #3
-        $this->client->delete('/api/tags/3');
-        $this->assertStatusCode(SUCCESS_OK);
+        // - First, delete tag #1
+        $this->client->delete('/api/tags/1');
+        $this->assertStatusCode(StatusCode::STATUS_NO_CONTENT);
 
-        // - Then, restore tag #3
-        $this->client->put('/api/tags/restore/3');
-        $this->assertStatusCode(SUCCESS_OK);
-        $response = $this->_getResponseAsArray();
-        $this->assertEmpty($response['deleted_at']);
+        // - Then, restore tag #1
+        $this->client->put('/api/tags/restore/1');
+        $this->assertStatusCode(StatusCode::STATUS_OK);
+        $this->assertNotNull(Tag::find(1));
     }
 }

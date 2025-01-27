@@ -1,30 +1,32 @@
 <?php
+declare(strict_types=1);
+
 use Phinx\Migration\AbstractMigration;
 
-class AddReturnQuantitiesToEventMaterials extends AbstractMigration
+final class AddReturnQuantitiesToEventMaterials extends AbstractMigration
 {
-    public function up()
+    public function up(): void
     {
         $table = $this->table('event_materials');
         $table
             ->addColumn('quantity_returned', 'integer', [
                 'after' => 'quantity',
                 'null' => false,
-                'signed' => false,
+                'signed' => true,
                 'limit' => 6,
                 'default' => 0,
             ])
             ->addColumn('quantity_broken', 'integer', [
                 'after' => 'quantity_returned',
                 'null' => false,
-                'signed' => false,
+                'signed' => true,
                 'limit' => 6,
                 'default' => 0,
             ])
             ->save();
     }
 
-    public function down()
+    public function down(): void
     {
         $table = $this->table('event_materials');
         $table

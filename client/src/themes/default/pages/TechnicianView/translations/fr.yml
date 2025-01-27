@@ -1,0 +1,15 @@
+title-simple: Technicien
+title: "Technicien «\_{name}\_»"
+
+#
+# - Tabs
+#
+
+infos:
+    modify-associated-user: Modifier l'utilisateur associé
+    technician-is-preparer: Ce technicien est préparateur de commandes.
+    preparer-description: Il/elle peut donc être assigné(e) en tant que préparateur(trice) des événements.
+
+documents:
+    confirm-permanently-delete: "Voulez-vous vraiment supprimer définitivement ce document\_?"
+    deleted: Document supprimé.

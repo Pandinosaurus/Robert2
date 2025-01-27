@@ -1,0 +1,36 @@
+@use '~@/themes/default/style/globals';
+
+.EventDetailsReturnSummaryItem {
+    &__col {
+        padding: globals.$spacing-small;
+
+        &--name {
+            padding-left: 0;
+        }
+
+        &--missing {
+            width: 250px;
+            margin: 0;
+            color: globals.$text-danger-color;
+            text-align: right;
+        }
+
+        &--broken {
+            width: 150px;
+            padding-left: 0;
+            color: globals.$text-warning-color;
+            text-align: right;
+        }
+    }
+
+    &__name {
+        &__link,
+        &__link:active {
+            color: globals.$text-base-color;
+        }
+
+        &__link:hover {
+            color: globals.$link-hover-color;
+        }
+    }
+}

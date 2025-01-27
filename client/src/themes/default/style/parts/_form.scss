@@ -1,0 +1,55 @@
+/* stylelint-disable selector-max-type */
+
+.Form {
+    &__actions {
+        margin-top: 40px;
+        text-align: left;
+    }
+
+    input + input {
+        margin-left: $spacing-medium;
+    }
+
+    &--fixed-actions {
+        margin-bottom: $form-fixed-actions-margin-bottom;
+
+        .Form__actions {
+            position: fixed;
+            z-index: 2;
+            left: 0;
+            bottom: 0;
+            right: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0;
+            padding: 20px 0;
+            background: $bg-color-body;
+            text-align: center;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+            gap: $spacing-small;
+        }
+    }
+
+    @media screen and (min-width: $screen-mobile) {
+        &--fixed-actions {
+            .Form__actions {
+                left: $sidebar-width;
+            }
+        }
+    }
+
+    @media screen and (min-width: $screen-tablet) {
+        &__actions {
+            padding-left: $form-label-width;
+        }
+    }
+
+    @media screen and (min-width: $screen-desktop) {
+        &--fixed-actions {
+            .Form__actions {
+                left: $sidebar-full-width;
+            }
+        }
+    }
+}

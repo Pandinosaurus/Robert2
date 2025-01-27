@@ -1,52 +1,51 @@
 <?php
 declare(strict_types=1);
 
-namespace Robert2\API\Controllers;
+namespace Loxya\Controllers;
 
 use DI\Container;
-use Illuminate\Database\Eloquent\Builder;
-use Slim\Http\ServerRequest as Request;
+use Loxya\Config\Config;
+use Loxya\Errors\Exception\HttpRangeNotSatisfiableException;
+use Loxya\Http\Request;
+use Loxya\Support\Paginator\LengthAwarePaginator;
 
 abstract class BaseController
 {
-    /** @var Container */
-    protected $container;
+    protected Container $container;
 
     public function __construct(Container $container)
     {
         $this->container = $container;
     }
 
-    /**
-     * @param Request  $request
-     * @param Builder  $query
-     * @param int|null $limit
-     *
-     * @return array
-     */
-    protected function paginate(Request $request, $query, ?int $limit = null): array
+    protected function paginate(Request $request, $query, int|null $limit = null): array
     {
-        $maxItemsPerPage = $this->container->get('settings')['maxItemsPerPage'] ?? 100;
-        $limit = min($limit ? (int)$limit : $maxItemsPerPage, $maxItemsPerPage);
+        $maxItemsPerPage = Config::get('maxItemsPerPage', 100);
+        $limit = min($limit ? (int) $limit : $maxItemsPerPage, $maxItemsPerPage);
 
-        $paginated = $query->paginate($limit);
-        $basePath = $request->getUri()->getPath();
-        $params = $request->getQueryParams();
+        /** @var LengthAwarePaginator $result */
+        $result = $query
+            ->paginate($limit)
+            ->withPath($request->getUri()->getPath())
+            ->appends($request->getQueryParams());
 
-        $result = $paginated
-            ->withPath($basePath)
-            ->appends($params)
-            ->toArray();
-
-        $data = $result['data'];
-        unset(
-            $result['data'],
-            $result['links']
-        );
+        if ($result->currentPage() > $result->lastPage()) {
+            throw new HttpRangeNotSatisfiableException(
+                $request,
+                "Current page number cannot be greater than total pages.",
+            );
+        }
 
         return [
-            'pagination' => $result,
-            'data'       => $data
+            'pagination' => [
+                'perPage' => $result->perPage(),
+                'currentPage' => $result->currentPage(),
+                'total' => [
+                    'items' => $result->total(),
+                    'pages' => $result->lastPage(),
+                ],
+            ],
+            'data' => $result->getCollection(),
         ];
     }
 }

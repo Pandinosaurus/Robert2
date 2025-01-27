@@ -1,86 +1,83 @@
 <?php
 declare(strict_types=1);
 
-namespace Robert2\API\Controllers;
+namespace Loxya\Controllers;
 
 use DI\Container;
-use Robert2\API\Errors\ValidationException;
-use Robert2\API\Models\User;
-use Robert2\API\Services\Auth;
-use Robert2\API\Validation\Validator as V;
+use Fig\Http\Message\StatusCodeInterface as StatusCode;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Loxya\Config\Config;
+use Loxya\Http\Enums\FlashType;
+use Loxya\Http\Request;
+use Loxya\Models\User;
+use Loxya\Services\Auth;
+use Loxya\Services\Auth\Exceptions\AuthException;
+use Odan\Session\FlashInterface;
+use Psr\Http\Message\ResponseInterface;
+use Slim\Exception\HttpBadRequestException;
+use Slim\Exception\HttpUnauthorizedException;
 use Slim\Http\Response;
-use Slim\Http\ServerRequest as Request;
 
-class AuthController extends BaseController
+final class AuthController extends BaseController
 {
-    /** @var Auth */
-    protected $auth;
+    private FlashInterface $flash;
 
-    public function __construct(Container $container, Auth $auth)
-    {
+    private Auth $auth;
+
+    public function __construct(
+        Container $container,
+        FlashInterface $flash,
+        Auth $auth,
+    ) {
         parent::__construct($container);
 
+        $this->flash = $flash;
         $this->auth = $auth;
     }
 
-    public function getSelf(Request $request, Response $response): Response
+    public function getSelf(Request $request, Response $response): ResponseInterface
     {
-        return $response->withJson(Auth::user(), SUCCESS_OK);
+        $user = Auth::user()->serialize(User::SERIALIZE_SESSION);
+
+        return $response->withJson($user, StatusCode::STATUS_OK);
     }
 
-    public function loginWithForm(Request $request, Response $response): Response
+    public function loginWithForm(Request $request, Response $response): ResponseInterface
     {
-        $data = (array)$request->getParsedBody();
-        $this->_validateAuthRequest($data);
+        $identifier = $request->getParsedBodyParam('identifier');
+        $password = $request->getParsedBodyParam('password');
 
-        $user = User::fromLogin($data['identifier'], $data['password']);
+        if (empty($identifier) || empty($password)) {
+            throw new HttpBadRequestException($request, "Insufficient credentials provided.");
+        }
 
-        $responseData['user'] = $user->toArray();
-        $responseData['token'] = Auth\JWT::generateToken($user);
+        try {
+            $user = User::fromLogin($identifier, $password);
+        } catch (ModelNotFoundException) {
+            throw new HttpUnauthorizedException($request, "Wrong credentials provided.");
+        }
 
-        return $response->withJson($responseData, SUCCESS_OK);
+        $result = $user->serialize(User::SERIALIZE_SESSION);
+
+        $result['token'] = Auth\JWT::generateToken($user);
+        if (Config::getEnv() === 'test') {
+            $result['token'] = '__FAKE-TOKEN__';
+        }
+
+        return $response->withJson($result, StatusCode::STATUS_OK);
     }
 
-    public function logout(Request $request, Response $response)
+    public function logout(Request $request, Response $response): ResponseInterface
     {
-        if (!$this->auth->logout()) {
-            // TODO: Ajouter un message d'erreur passé au client (lorsqu'on aura un moyen de le faire)
-            //       l'informant du fait qu'il n'a pas été complétement
-            //       déconnécté.
-            return $response->withRedirect('/');
-        }
-        return $response->withRedirect('/login#bye');
-    }
+        $redirectUrl = (string) Config::getBaseUri()
+            ->withPath('/login');
 
-    // ——————————————————————————————————————————————————————
-    // —
-    // —    Internal Methods
-    // —
-    // ——————————————————————————————————————————————————————
-
-    protected function _validateAuthRequest(array $data): void
-    {
-        $valid  = true;
-        $errors = ['identifier' => [], 'password' => []];
-
-        if (!isset($data['identifier']) || !V::notEmpty()->validate($data['identifier'])) {
-            $errors['identifier'][] = "Identifier must not be empty";
-            $valid = false;
-        }
-
-        if (!isset($data['password']) || !V::notEmpty()->validate($data['password'])) {
-            $errors['password'][] = "Password must not be empty";
-            $valid = false;
-        }
-
-        if (isset($data['password']) && !V::length(4)->validate($data['password'])) {
-            $errors['password'][] = "Password must have a length greater than 4";
-            $valid = false;
-        }
-
-        if (!$valid) {
-            throw (new ValidationException)
-                ->setValidationErrors($errors);
+        try {
+            return $this->auth->logout($redirectUrl);
+        } catch (AuthException) {
+            $this->flash->add(FlashType::ERROR->value, 'logout-failed');
+            $redirectUrl = (string) Config::getBaseUri();
+            return $response->withRedirect($redirectUrl);
         }
     }
 }

@@ -1,0 +1,17 @@
+[
+    {
+        "tag_id": 1,
+        "taggable_type": "material",
+        "taggable_id": 1
+    },
+    {
+        "tag_id": 1,
+        "taggable_type": "material",
+        "taggable_id": 2
+    },
+    {
+        "tag_id": 1,
+        "taggable_type": "material",
+        "taggable_id": 3
+    }
+]

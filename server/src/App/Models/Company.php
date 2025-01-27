@@ -1,92 +1,157 @@
 <?php
 declare(strict_types=1);
 
-namespace Robert2\API\Models;
+namespace Loxya\Models;
 
+use Adbar\Dot as DotArray;
+use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
-use Robert2\API\Validation\Validator as V;
-use Robert2\API\Models\Traits\Taggable;
+use Illuminate\Support\Str;
+use Loxya\Contracts\Serializable;
+use Loxya\Models\Traits\Serializer;
+use Loxya\Support\Assert;
+use Respect\Validation\Validator as V;
 
-class Company extends BaseModel
+/**
+ * Société.
+ *
+ * @property-read ?int $id
+ * @property string $legal_name
+ * @property string|null $phone
+ * @property string|null $street
+ * @property string|null $postal_code
+ * @property string|null $locality
+ * @property int|null $country_id
+ * @property-read Country|null $country
+ * @property-read string|null $full_address
+ * @property string|null $note
+ * @property-read CarbonImmutable $created_at
+ * @property-read CarbonImmutable|null $updated_at
+ * @property-read CarbonImmutable|null $deleted_at
+ *
+ * @property-read Collection<array-key, Beneficiary> $beneficiaries
+ *
+ * @method static Builder|static search(string $term)
+ */
+final class Company extends BaseModel implements Serializable
 {
+    use Serializer;
     use SoftDeletes;
-    use Taggable;
-
-    protected $orderField = 'legal_name';
-    protected $searchField = 'legal_name';
 
     public function __construct(array $attributes = [])
     {
         parent::__construct($attributes);
 
         $this->validation = [
-            'legal_name'  => V::notEmpty()->length(1, 191),
-            'street'      => V::optional(V::length(null, 191)),
+            'legal_name' => V::custom([$this, 'checkLegalName']),
+            'street' => V::optional(V::length(null, 191)),
             'postal_code' => V::optional(V::length(null, 10)),
-            'locality'    => V::optional(V::length(null, 191)),
-            'country_id'  => V::optional(V::numeric()),
-            'phone'       => V::optional(V::phone()),
+            'locality' => V::optional(V::length(null, 191)),
+            'country_id' => V::custom([$this, 'checkCountryId']),
+            'phone' => V::optional(V::phone()),
         ];
     }
 
-    // ——————————————————————————————————————————————————————
-    // —
-    // —    Relations
-    // —
-    // ——————————————————————————————————————————————————————
+    // ------------------------------------------------------
+    // -
+    // -    Validation
+    // -
+    // ------------------------------------------------------
+
+    public function checkLegalName($value)
+    {
+        V::notEmpty()
+            ->length(2, 191)
+            ->check($value);
+
+        $alreadyExists = static::query()
+            ->where('legal_name', $value)
+            ->when($this->exists, fn (Builder $subQuery) => (
+                $subQuery->where('id', '!=', $this->id)
+            ))
+            ->withTrashed()
+            ->exists();
+
+        return !$alreadyExists ?: 'company-legal-name-already-in-use';
+    }
+
+    public function checkCountryId($value)
+    {
+        V::nullable(V::intVal())->check($value);
+
+        return $value !== null
+            ? Country::includes($value)
+            : true;
+    }
+
+    // ------------------------------------------------------
+    // -
+    // -    Relations
+    // -
+    // ------------------------------------------------------
+
+    public function beneficiaries(): HasMany
+    {
+        return $this->hasMany(Beneficiary::class)
+            ->orderBy('id');
+    }
+
+    public function country(): BelongsTo
+    {
+        return $this->belongsTo(Country::class);
+    }
+
+    // ------------------------------------------------------
+    // -
+    // -    Mutators
+    // -
+    // ------------------------------------------------------
 
     protected $appends = [
-        'country'
+        'full_address',
     ];
-
-    public function Persons()
-    {
-        return $this->hasMany('Robert2\API\Models\Person');
-    }
-
-    public function Country()
-    {
-        return $this->belongsTo('Robert2\API\Models\Country');
-    }
-
-    // ——————————————————————————————————————————————————————
-    // —
-    // —    Mutators
-    // —
-    // ——————————————————————————————————————————————————————
 
     protected $casts = [
-        'legal_name'  => 'string',
-        'street'      => 'string',
+        'legal_name' => 'string',
+        'street' => 'string',
         'postal_code' => 'string',
-        'locality'    => 'string',
-        'country_id'  => 'integer',
-        'phone'       => 'string',
-        'note'        => 'string',
+        'locality' => 'string',
+        'country_id' => 'integer',
+        'phone' => 'string',
+        'note' => 'string',
+        'created_at' => 'immutable_datetime',
+        'updated_at' => 'immutable_datetime',
+        'deleted_at' => 'immutable_datetime',
     ];
 
-    public function getPersonsAttribute()
+    public function getFullAddressAttribute(): string|null
     {
-        return $this->Persons()->get()->toArray();
+        $addressParts = [];
+
+        $addressParts[] = trim($this->street ?? '');
+        $addressParts[] = implode(' ', array_filter([
+            trim($this->postal_code ?? ''),
+            trim($this->locality ?? ''),
+        ]));
+
+        $addressParts = array_filter($addressParts);
+        return !empty($addressParts) ? implode("\n", $addressParts) : null;
     }
 
-    public function getCountryAttribute()
+    public function getCountryAttribute(): Country|null
     {
-        $country = $this->Country()->select(['id', 'name', 'code'])->first();
-        return $country ? $country->toArray() : null;
+        return $this->getRelationValue('country');
     }
 
-    public function getTagsAttribute()
-    {
-        $tags = $this->Tags()->get();
-        return Tag::format($tags);
-    }
-
-    // ——————————————————————————————————————————————————————
-    // —
-    // —    Setters
-    // —
-    // ——————————————————————————————————————————————————————
+    // ------------------------------------------------------
+    // -
+    // -    Setters
+    // -
+    // ------------------------------------------------------
 
     protected $fillable = [
         'legal_name',
@@ -98,39 +163,45 @@ class Company extends BaseModel
         'note',
     ];
 
-    public function edit($id = null, array $data = []): BaseModel
+    public function setPhoneAttribute(mixed $value): void
     {
-        if (!empty($data['phone'])) {
-            $data['phone'] = normalizePhone($data['phone']);
-        }
-
-        $company = parent::edit($id, $data);
-
-        if (!empty($data['persons'])) {
-            $this->addPersons($company['id'], $data['persons']);
-        }
-
-        if (!empty($data['tags'])) {
-            $this->setTags($company['id'], $data['tags']);
-        }
-
-        return $company;
+        $value = !empty($value) ? Str::remove(' ', $value) : $value;
+        $this->attributes['phone'] = $value === '' ? null : $value;
     }
 
-    public function addPersons(int $id, array $persons)
+    // ------------------------------------------------------
+    // -
+    // -    Query Scopes
+    // -
+    // ------------------------------------------------------
+
+    protected $orderable = [
+        'legal_name',
+    ];
+
+    public function scopeSearch(Builder $query, string $term): Builder
     {
-        if (empty($persons)) {
-            throw new \InvalidArgumentException("Missing persons data to add to company.");
-        }
+        Assert::minLength($term, 2, "The term must contain more than two characters.");
 
-        $Company = static::findOrFail($id);
-        foreach ($persons as $person) {
-            $person['company_id'] = $Company->id;
-            $Person = new Person;
-            $Person->fill($person);
-            $Person->save();
-        }
+        $term = sprintf('%%%s%%', addcslashes($term, '%_'));
+        return $query->where('legal_name', 'LIKE', $term);
+    }
 
-        return $Company->Persons;
+    // ------------------------------------------------------
+    // -
+    // -    Serialization
+    // -
+    // ------------------------------------------------------
+
+    public function serialize(): array
+    {
+        /** @var Company $company */
+        $company = tap(clone $this, static function (Company $company) {
+            $company->append(['country']);
+        });
+
+        return (new DotArray($company->attributesForSerialization()))
+            ->delete(['created_at', 'updated_at', 'deleted_at'])
+            ->all();
     }
 }

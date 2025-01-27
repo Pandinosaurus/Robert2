@@ -1,33 +1,37 @@
 <?php
 declare(strict_types=1);
 
-namespace Robert2\API\Services;
+namespace Loxya\Services;
 
+use Fig\Http\Message\StatusCodeInterface as StatusCode;
+use Illuminate\Support\Collection;
+use Loxya\Config\Acl;
+use Loxya\Config\Config;
+use Loxya\Http\Request;
+use Loxya\Models\Enums\Group;
+use Loxya\Models\User;
+use Loxya\Services\Auth\Contracts\AuthenticatorInterface;
+use Loxya\Services\Auth\Contracts\RemoteAuthenticatorInterface;
+use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Server\RequestHandlerInterface as RequestHandler;
-use Robert2\API\Config\Acl;
-use Robert2\API\Config\Config;
-use Robert2\API\Models\User;
-use Robert2\API\Services\Auth\AuthenticatorInterface;
 use Slim\Exception\HttpUnauthorizedException;
-use Slim\Http\ServerRequest as Request;
 use Slim\Psr7\Response;
 
 final class Auth
 {
-    /** @var AuthenticatorInterface[] */
-    private $authenticators;
+    /** @var Collection<array-key, AuthenticatorInterface> */
+    private Collection $authenticators;
 
-    /** @var User|null */
-    private static $user = null;
+    private static ?User $user = null;
 
     /**
-     * Contructeur.
+     * Constructeur.
      *
      * @param AuthenticatorInterface[] $authenticators
      */
-    public function __construct(array $authenticators = [])
+    public function __construct(array $authenticators)
     {
-        $this->authenticators = $authenticators;
+        $this->authenticators = new Collection($authenticators);
     }
 
     public function middleware(Request $request, RequestHandler $handler)
@@ -44,51 +48,135 @@ final class Auth
         return $handler->handle($request);
     }
 
-    public function logout()
+    /**
+     * Permet de déconnecter l'utilisateur courant.
+     *
+     * NOTE: Cette méthode ne devrait jamais être utilisée dans un contexte stateless.
+     *
+     * @param string|null $returnTo Si ce paramètre est spécifié, la déconnexion sera considérée comme
+     *                              une déconnexion "complète" et la méthode retournera une réponse
+     *                              {@link ResponseInterface} de redirection. La destination de cette
+     *                              redirection dépendra de l'état de connexion de l'utilisateur sur
+     *                              les systèmes de connexion distant activés.
+     *                              Voir {@link RemoteAuthenticatorInterface::logout()} à ce sujet.
+     *                              Quoi qu'il en soit, l'utilisateur sera, à la fin du processus de
+     *                              déconnexion, redirigé vers l'URL spécifiée dans ce paramètre.
+     *                              Si ce paramètre est passé à `null`, il n'y aura pas de redirection
+     *                              de retournée et l'utilisateur sera uniquement déconnecté "localement"
+     *                              (= sur Loxya).
+     *
+     * @return ?ResponseInterface Si c'est une déconnexion complète (voir `$returnTo` ci-dessus), une
+     *                            réponse de type "redirection" sera retournée par cette méthode.
+     *                            Sinon, `null` sera retourné.
+     */
+    public function logout(?string $returnTo): ?ResponseInterface
     {
+        $isFullLogout = $returnTo !== null;
+
         if (!static::isAuthenticated()) {
-            return true;
+            return $isFullLogout
+                ? (new Response(StatusCode::STATUS_FOUND))
+                    ->withHeader('Location', $returnTo)
+                : null;
         }
 
-        $isFullyLogout = true;
+        // - Récupère le premier authentifieur externe qui considère l'utilisateur
+        //   comme authentifié via son système d'authentification distant.
+        //
+        // NOTE: S'il y en a plusieurs dans ce cas, malheureusement, seul le
+        //       premier sera "complètement" déconnecté car on ne peut pas rediriger
+        //       vers deux URLs en même temps (ce cas de figure étant assez rare étant
+        //       donné qu'il faut qu'un utilisateur soit connecté sur plusieurs système
+        //       distants en même temps et que Loxya en ait conscience).
+        /** @var ?RemoteAuthenticatorInterface $remoteAuthenticator */
+        $remoteAuthenticator = $isFullLogout
+            ? $this->authenticators->first(static fn (AuthenticatorInterface $authenticator) => (
+                $authenticator->isEnabled() &&
+                $authenticator instanceof RemoteAuthenticatorInterface &&
+                $authenticator->isAuthenticated()
+            ))
+            : null;
+
+        // - Dispatch le logout aux authenticators.
         foreach ($this->authenticators as $auth) {
-            if (!$auth->logout()) {
-                $isFullyLogout = false;
+            if (!$auth->isEnabled()) {
+                continue;
             }
+
+            // - Si c'est une déconnexion "totale" et que c'est l'authentifieur
+            //   externe qui a été choisi pour la déconnexion distante, on le
+            //   passe car il sera déconnecté complètement plus bas.
+            if ($isFullLogout && $auth === $remoteAuthenticator) {
+                continue;
+            }
+
+            // - Sinon, on supprime les données d'authentification
+            //   persistées localement.
+            $auth->clearPersistentData();
         }
 
-        return $isFullyLogout;
+        // - Reset l'utilisateur connecté courant.
+        static::reset();
+
+        // - Si on a un authentifieur qui nécessite un logout avec redirection,
+        //   on l'appelle maintenant que l'on a déconnecté localement les autres.
+        if ($isFullLogout && $remoteAuthenticator !== null) {
+            // - /!\ L'utilisateur va potentiellement être redirigé hors de Loxya !!!
+            return $remoteAuthenticator->logout($returnTo);
+        }
+
+        return $isFullLogout
+            ? (new Response(StatusCode::STATUS_FOUND))
+                ->withHeader('Location', $returnTo)
+            : null;
     }
 
     // ------------------------------------------------------
     // -
-    // -    Static public methods
+    // -    Méthodes publiques statiques
     // -
     // ------------------------------------------------------
 
     public static function user(): ?User
     {
-        return !empty(static::$user) ? static::$user : null;
+        if (empty(static::$user)) {
+            return static::$user;
+        }
+        return static::$user->refresh();
     }
 
     public static function isAuthenticated(): bool
     {
-        return (bool)static::user();
+        return (bool) static::user();
     }
 
-    public static function isLoginRequest(Request $request): bool
+    public static function is($groups): bool
     {
-        return static::requestMatch($request, '/login');
+        $groups = (array) $groups;
+
+        if (!static::isAuthenticated()) {
+            // - Si on est en mode CLI, on considère que le process
+            //   courant a un accès administrateur.
+            if (!isCli()) {
+                return false;
+            }
+            $userGroup = Group::ADMINISTRATION;
+        } else {
+            $userGroup = static::user()->group;
+        }
+
+        return in_array($userGroup, (array) $groups, true);
     }
 
-    public static function isApiRequest(Request $request): bool
+    public static function reset(): void
     {
-        return static::requestMatch($request, '/api');
+        static::$user = null;
+        container('i18n')->refreshLanguage();
     }
 
     // ------------------------------------------------------
     // -
-    // -    Internal methods
+    // -    Méthodes internes
     // -
     // ------------------------------------------------------
 
@@ -99,14 +187,8 @@ final class Auth
             return false;
         }
 
-        // - Routes publiques
-        $isAllowedRoute = static::requestMatch($request, Acl::PUBLIC_ROUTES);
-        if ($isAllowedRoute) {
-            return false;
-        }
-
-        // - Toutes les autres routes sont protégées.
-        return true;
+        // - Si ce n'est pas une route publique, c'est une route protégée.
+        return !$request->match(Acl::PUBLIC_ROUTES);
     }
 
     protected function retrieveUser(Request $request): bool
@@ -118,14 +200,34 @@ final class Auth
         // - Si on est en mode "test", on "fake" identifie l'utilisateur.
         if (Config::getEnv() === 'test') {
             static::$user = User::find(1);
+
+            // - L'utilisateur identifié a changé, on demande l'actualisation
+            //   de la langue détecté par l'i18n car la valeur a pu changer...
+            container('i18n')->refreshLanguage();
+
             return true;
         }
 
         // - On utilise les authenticators pour identifier l'utilisateur.
         foreach ($this->authenticators as $auth) {
+            if (!$auth->isEnabled()) {
+                continue;
+            }
+
             $user = $auth->getUser($request);
             if (!empty($user) && $user instanceof User) {
                 static::$user = $user;
+
+                // - L'utilisateur identifié a changé, on demande l'actualisation
+                //   de la langue détecté par l'i18n car la valeur a pu changer...
+                container('i18n')->refreshLanguage();
+
+                // - Si on est dans un contexte stateful, on persiste l'utilisateur pour que ceci puisse être connu du front-end.
+                //   (sauf si c'est déjà l'authentification JWT qui a identifié l'utilisateur de manière stateful)
+                if (!$request->isApi() && !($auth instanceof Auth\JWT)) {
+                    Auth\JWT::registerSessionToken($user);
+                }
+
                 return true;
             }
         }
@@ -133,43 +235,20 @@ final class Auth
         return false;
     }
 
-    protected function unauthenticated(Request $request, RequestHandler $handler): Response
+    protected function unauthenticated(Request $request, RequestHandler $handler): ResponseInterface
     {
-        if (static::isLoginRequest($request)) {
+        $isLoginRequest = $request->match(['/login']);
+        if ($isLoginRequest) {
             return $handler->handle($request);
         }
 
-        $isApiRequest = static::isApiRequest($request);
-        $isNormalRequest = !$request->isXhr() && !$isApiRequest;
-        if ($isNormalRequest) {
-            // TODO: globalConfig['client_url'] . '/login' à la place de '/login' ?
-            return (new Response(302))->withHeader('Location', '/login');
+        if (!$request->isXhr() && !$request->isApi()) {
+            $url = (string) Config::getBaseUri()->withPath('/login');
+
+            return (new Response(StatusCode::STATUS_FOUND))
+                ->withHeader('Location', $url);
         }
 
         throw new HttpUnauthorizedException($request);
-    }
-
-    protected static function requestMatch(Request $request, $paths): bool
-    {
-        $method = $request->getMethod();
-        $uri = '/' . $request->getUri()->getPath();
-        $uri = preg_replace('#/+#', '/', $uri);
-
-        foreach ((array)$paths as $path => $methods) {
-            if (is_numeric($path)) {
-                $path = $methods;
-                $methods = null;
-            }
-            $path = rtrim($path, '/');
-
-            $isUriMatching = preg_match(sprintf('@^%s(/.*)?$@', $path), $uri);
-            $isMethodMatching = $methods === null || in_array($method, $methods, true);
-
-            if ($isUriMatching && $isMethodMatching) {
-                return true;
-            }
-        }
-
-        return false;
     }
 }

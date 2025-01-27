@@ -1,50 +1,62 @@
 <?php
 declare(strict_types=1);
 
-namespace Robert2\API\Errors;
+namespace Loxya\Errors;
 
+use Fig\Http\Message\StatusCodeInterface as StatusCode;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
-use Robert2\API\Errors\Renderer\JsonErrorRenderer;
+use Loxya\Errors\Exception\ApiException;
+use Loxya\Errors\Exception\ValidationException;
+use Loxya\Errors\Renderer\HtmlErrorRenderer;
+use Loxya\Errors\Renderer\JsonErrorRenderer;
 use Slim\Exception\HttpException;
 use Slim\Handlers\ErrorHandler as CoreErrorHandler;
 
 class ErrorHandler extends CoreErrorHandler
 {
-    protected $defaultErrorRendererContentType = 'application/json';
+    protected string $defaultErrorRendererContentType = 'application/json';
     protected $defaultErrorRenderer = JsonErrorRenderer::class;
 
-    protected $errorRenderers = [
+    protected array $errorRenderers = [
         'application/json' => JsonErrorRenderer::class,
+        'text/html' => HtmlErrorRenderer::class,
     ];
 
     protected function determineStatusCode(): int
     {
         if ($this->method === 'OPTIONS') {
-            return 200;
+            return StatusCode::STATUS_OK;
         }
 
         if ($this->exception instanceof ModelNotFoundException) {
-            return 404;
+            return StatusCode::STATUS_NOT_FOUND;
         }
 
         if ($this->exception instanceof HttpException) {
             return $this->exception->getCode();
         }
 
-        $errorCode = (int)($this->exception->getCode() ?: ERROR_SERVER);
-        if ($errorCode >= 100 and $errorCode <= 599) {
-            return $errorCode;
+        if ($this->exception instanceof ValidationException) {
+            return StatusCode::STATUS_BAD_REQUEST;
         }
 
-        return ERROR_SERVER;
+        if ($this->exception instanceof ApiException) {
+            return $this->exception->getStatusCode();
+        }
+
+        return StatusCode::STATUS_INTERNAL_SERVER_ERROR;
     }
 
     protected function writeToErrorLog(): void
     {
         $isIgnoredException = (
-            $this->exception instanceof HttpException ||
             $this->exception instanceof ModelNotFoundException ||
-            $this->exception instanceof ValidationException
+            $this->exception instanceof ValidationException ||
+            $this->exception instanceof ApiException ||
+            (
+                $this->exception instanceof HttpException &&
+                $this->exception->getCode() < 500
+            )
         );
         if ($isIgnoredException) {
             return;

@@ -1,0 +1,144 @@
+/* stylelint-disable declaration-no-important, scss/no-global-function-names */
+
+@import 'sweetalert2/src/sweetalert2';
+
+.swal2-container {
+    font-family: $base-font-family;
+}
+
+.swal2-popup {
+    background: $bg-color-emphasis;
+    box-shadow: 1px 1px 20px hsla(0deg, 0%, 0%, 0.5);
+}
+
+.swal2-title {
+    color: $text-base-color;
+    font-size: 1.5rem;
+}
+
+.swal2-html-container,
+.swal2-content {
+    color: $text-base-color;
+    white-space: pre-line;
+}
+
+.swal2-file,
+.swal2-input,
+.swal2-textarea {
+    min-height: $input-min-height;
+    padding: $input-padding-vertical $input-padding-horizontal;
+    outline: 0;
+    border: $input-border-width solid $input-border-color;
+    border-radius: $input-border-radius;
+    background-color: $input-background-color;
+    color: $input-text-color;
+    font-family: $base-font-family;
+    font-size: $input-font-size;
+    line-height: $input-line-height;
+    box-shadow: none;
+
+    &::placeholder {
+        color: $input-placeholder-color;
+    }
+
+    &:-webkit-autofill,
+    &:-webkit-autofill:hover,
+    &:-webkit-autofill:focus {
+        -webkit-text-fill-color: $input-autofill-text-color;
+        box-shadow: 0 0 0 1000px $input-autofill-background-color inset;
+        transition: background-color 50000ms ease-in-out 0;
+    }
+
+    &:focus {
+        border-color: $input-focus-border-color;
+        background-color: $input-focus-background-color;
+        color: $input-focus-text-color;
+        box-shadow: none;
+    }
+
+    &:disabled {
+        border-color: $input-border-color;
+        background-color: $input-disabled-background-color;
+        color: $input-disabled-text-color;
+    }
+}
+
+.swal2-timer-progress-bar {
+    background-color: $primary-color;
+}
+
+.swal2-styled:focus {
+    box-shadow: none;
+}
+
+.swal2-icon.swal2-warning {
+    border-color: $bg-color-button-warning;
+    color: adjust-color($bg-color-button-warning, $lightness: 8%);
+}
+
+.swal2-confirm {
+    background-color: $bg-color-button-success !important;
+
+    &:hover,
+    &:focus {
+        background-color: adjust-color($bg-color-button-success, $lightness: 8%) !important;
+        box-shadow: none !important;
+    }
+
+    &:active {
+        background-color: adjust-color($bg-color-button-success, $lightness: -8%) !important;
+    }
+
+    &--warning {
+        background-color: $bg-color-button-warning !important;
+
+        &:hover,
+        &:focus {
+            background-color: adjust-color($bg-color-button-warning, $lightness: 8%) !important;
+        }
+
+        &:active {
+            background-color: adjust-color($bg-color-button-warning, $lightness: -8%) !important;
+        }
+    }
+
+    &--danger {
+        background-color: $bg-color-button-danger !important;
+
+        &:hover,
+        &:focus {
+            background-color: adjust-color($bg-color-button-danger, $lightness: 8%) !important;
+        }
+
+        &:active {
+            background-color: adjust-color($bg-color-button-danger, $lightness: -8%) !important;
+        }
+    }
+
+    &--success {
+        background-color: $bg-color-button-success !important;
+
+        &:hover,
+        &:focus {
+            background-color: adjust-color($bg-color-button-success, $lightness: 8%) !important;
+        }
+
+        &:active {
+            background-color: adjust-color($bg-color-button-success, $lightness: -8%) !important;
+        }
+    }
+}
+
+.swal2-cancel {
+    background-color: $bg-color-button-default !important;
+
+    &:hover,
+    &:focus {
+        background-color: adjust-color($bg-color-button-default, $lightness: 8%) !important;
+        box-shadow: none !important;
+    }
+
+    &:active {
+        background-color: adjust-color($bg-color-button-default, $lightness: -8%) !important;
+    }
+}

@@ -1,0 +1,104 @@
+@use '~@/themes/default/style/globals';
+
+.DuplicateEvent {
+    &__header {
+        display: flex;
+        align-items: center;
+        padding: 0.7rem 1rem;
+        background-color: globals.$bg-color-emphasis;
+        gap: 10px;
+
+        &__title {
+            flex: 1;
+            overflow: hidden;
+            margin: 0;
+            font-size: 1.3rem;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+        }
+
+        &__close-button {
+            flex: 0 0 auto;
+        }
+    }
+
+    &__body {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: globals.$spacing-large;
+    }
+
+    &__data {
+        width: 100%;
+        margin-top: globals.$spacing-large;
+        padding-top: globals.$spacing-large;
+        border-top: 1px solid globals.$divider-emphasis;
+    }
+
+    &__footer {
+        display: flex;
+        justify-content: center;
+        padding: 1.5rem  globals.$spacing-large;
+        background-color: rgba(0, 0, 0, 0.1);
+        gap: globals.$spacing-small;
+    }
+
+    //
+    // - Content
+    //
+
+    &__help {
+        margin-top: 0;
+    }
+
+    &__datepicker {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+
+        &__input {
+            width: 100%;
+            max-width: 300px;
+            font-size: 1.1rem;
+        }
+    }
+
+    &__warning {
+        &--technician-transfer {
+            margin-bottom: globals.$spacing-large;
+        }
+    }
+
+    &__infos {
+        display: flex;
+        flex-flow: row wrap;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        gap: globals.$spacing-medium;
+
+        &__item {
+            overflow: hidden;
+            max-width: 330px;
+            margin: 0;
+            font-size: 1rem;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+
+            &__icon {
+                width: 1.5rem;
+                margin-right: globals.$spacing-thin;
+                text-align: center;
+            }
+
+            &__content {
+                margin-left: globals.$spacing-thin;
+            }
+
+            &--empty {
+                color: globals.$text-danger-color;
+            }
+        }
+    }
+}

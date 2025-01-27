@@ -1,0 +1,179 @@
+@use '~@/themes/default/style/globals';
+@use 'sass:color';
+
+.Materials {
+    $block: &;
+
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+
+    &__filters {
+        display: flex;
+        flex-wrap: wrap;
+        margin-bottom: globals.$spacing-small;
+        gap: globals.$spacing-small;
+
+        .MaterialsFilters {
+            flex: 0 1 auto;
+        }
+    }
+
+    &__quantities-date {
+        flex: 1 0 auto;
+
+        &__input {
+            width: 310px;
+        }
+
+        &__clear-button {
+            margin-left: globals.$spacing-small;
+        }
+    }
+
+    &__link {
+        padding: 10px 0;
+
+        // - `!important`, pour surcharger la définition globale du `<a>`.
+        // stylelint-disable-next-line declaration-no-important
+        color: globals.$text-base-color !important;
+
+        &:hover {
+            // - `!important`, pour surcharger la définition globale du `<a>`.
+            // stylelint-disable-next-line declaration-no-important
+            color: globals.$link-hover-color !important;
+        }
+    }
+
+    &:not(&--trashed) {
+        #{$block}__row {
+            cursor: pointer;
+
+            &:hover > #{$block}__cell {
+                background-color: color.adjust(globals.$bg-color-table-td, $lightness: 5%);
+            }
+        }
+    }
+
+    &__cell {
+        &__empty {
+            color: globals.$text-light-color;
+            font-style: italic;
+        }
+
+        &--ref,
+        &--park,
+        &--category,
+        &--description,
+        &--rental-price,
+        &--replacement-price,
+        &--quantity-broken,
+        &--tags {
+            display: none;
+        }
+
+        &--tags {
+            max-width: 400px;
+        }
+
+        &--category {
+            white-space: nowrap;
+        }
+
+        &--rental-price,
+        &--replacement-price {
+            // - Important pour surcharger la définition du <th> de `.VueTables`.
+            // stylelint-disable-next-line declaration-no-important
+            text-align: right !important;
+        }
+
+        &--quantity,
+        &--quantity-broken {
+            // - Important pour surcharger la définition du <th> de `.VueTables`.
+            // stylelint-disable-next-line declaration-no-important
+            text-align: center !important;
+        }
+    }
+
+    &__park-location {
+        margin-top: 3px;
+        color: globals.$text-soft-color;
+    }
+
+    &__sub-category {
+        margin-top: 3px;
+    }
+
+    &__quantity-broken {
+        &--exists {
+            color: globals.$text-danger-color;
+            font-weight: 800;
+        }
+    }
+
+    &__tags-list {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        margin-bottom: -0.35rem;
+        cursor: pointer;
+
+        &:hover {
+            color: globals.$link-hover-color;
+        }
+    }
+
+    &__add-tags {
+        flex: 1;
+        margin-bottom: 0.35rem;
+        font-size: 0.85rem;
+    }
+
+    //
+    // - Responsive
+    //
+
+    @media (min-width: globals.$screen-tablet) {
+        &__cell {
+            &--ref,
+            &--rental-price,
+            &--replacement-price,
+            &--category {
+                display: table-cell;
+            }
+        }
+    }
+
+    @media (min-width: globals.$screen-desktop) {
+        &__cell {
+            &--quantity-broken,
+            &--tags {
+                display: table-cell;
+            }
+        }
+    }
+
+    @media (min-width: globals.$screen-big-desktop) {
+        &__cell {
+            &--park,
+            &--description {
+                display: table-cell;
+            }
+        }
+
+        &__filters {
+            position: absolute;
+            z-index: 1;
+            left: globals.$table-search-input;
+            right: calc(#{globals.$spacing-large} + 45px + #{globals.$spacing-medium});
+            flex-wrap: nowrap;
+            align-items: center;
+            margin-bottom: 0;
+            margin-left: globals.$spacing-small;
+
+            .MaterialsFilters {
+                flex-wrap: nowrap;
+            }
+        }
+    }
+}

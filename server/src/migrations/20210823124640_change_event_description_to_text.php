@@ -1,9 +1,11 @@
 <?php
+declare(strict_types=1);
+
 use Phinx\Migration\AbstractMigration;
 
-class ChangeEventDescriptionToText extends AbstractMigration
+final class ChangeEventDescriptionToText extends AbstractMigration
 {
-    public function up()
+    public function up(): void
     {
         $table = $this->table('events');
         $table
@@ -11,7 +13,7 @@ class ChangeEventDescriptionToText extends AbstractMigration
             ->save();
     }
 
-    public function down()
+    public function down(): void
     {
         $table = $this->table('events');
         $table

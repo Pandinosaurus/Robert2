@@ -1,127 +1,45 @@
 <?php
 declare(strict_types=1);
 
-namespace Robert2\Tests;
+namespace Loxya\Tests;
 
-use Robert2\API\Models;
+use Brick\Math\BigDecimal as Decimal;
+use Loxya\Errors\Exception\ValidationException;
+use Loxya\Models\Park;
 
-final class ParkTest extends ModelTestCase
+final class ParkTest extends TestCase
 {
-    public function setup(): void
-    {
-        parent::setUp();
-
-        $this->model = new Models\Park();
-    }
-
-    public function testTableName(): void
-    {
-        $this->assertEquals('parks', $this->model->getTable());
-    }
-
-    public function testGetAll(): void
-    {
-        $result = $this->model->getAll()->get()->toArray();
-        $this->assertCount(2, $result);
-    }
-
-    public function testGetMaterials(): void
-    {
-        $Park = $this->model::find(1);
-        $results = $Park->materials;
-        $this->assertCount(7, $results);
-    }
-
     public function testGetTotalItems(): void
     {
-        $Park = $this->model::find(1);
-        $this->assertEquals(7, $Park->total_items);
+        $park = Park::findOrFail(1);
+        $this->assertEquals(7, $park->total_items);
     }
 
     public function testGetTotalAmount(): void
     {
-        $Park = $this->model::find(1);
-        $this->assertEquals(101223.80, $Park->total_amount);
+        $park = Park::findOrFail(1);
+
+        $this->assertInstanceOf(Decimal::class, $park->total_amount);
+        $this->assertSame('119480.80', (string) $park->total_amount);
     }
 
-    public function testGetPerson(): void
+    public function testDelete(): void
     {
-        $Park = $this->model::find(1);
-        $this->assertEquals([
-            'id' => 1,
-            'user_id' => 1,
-            'first_name' => 'Jean',
-            'last_name' => 'Fountain',
-            'full_name' => 'Jean Fountain',
-            'reference' => '0001',
-            'nickname' => null,
-            'email' => 'tester@robertmanager.net',
-            'phone' => null,
-            'street' => '1, somewhere av.',
-            'postal_code' => '1234',
-            'locality' => 'Megacity',
-            'country_id' => 1,
-            'company_id' => 1,
-            'note' => null,
-            'created_at' => null,
-            'updated_at' => null,
-            'deleted_at' => null,
-            'company' => [
-                'id' => 1,
-                'legal_name' => 'Testing, Inc',
-                'street' => '1, company st.',
-                'postal_code' => '1234',
-                'locality' => 'Megacity',
-                'country_id' => 1,
-                'phone' => '+4123456789',
-                'note' => 'Just for tests',
-                'created_at' => null,
-                'updated_at' => null,
-                'deleted_at' => null,
-                'country' => [
-                    'id' => 1,
-                    'name' => 'France',
-                    'code' => 'FR',
-                ],
-            ],
-            'country' => [
-                'id' => 1,
-                'name' => 'France',
-                'code' => 'FR',
-            ],
-        ], $Park->person);
+        // - Avec un parc non vide.
+        $this->assertThrow(\LogicException::class, static function () {
+            Park::findOrFail(1)->delete();
+        });
+
+        // - Avec un parc vide.
+        $newPark = Park::create(['name' => 'Vide et éphémère']);
+        $isDeleted = Park::findOrFail($newPark->id)->delete();
+        $this->assertTrue($isDeleted);
+        $this->assertNull(Park::find($newPark->id));
     }
 
-    public function testGetCompany(): void
+    public function testCreateParkDuplicate(): void
     {
-        $Park = $this->model::find(2);
-        $this->assertEquals([
-            'id' => 1,
-            'legal_name' => 'Testing, Inc',
-            'street' => '1, company st.',
-            'postal_code' => '1234',
-            'locality' => 'Megacity',
-            'country_id' => 1,
-            'phone' => '+4123456789',
-            'note' => 'Just for tests',
-            'created_at' => null,
-            'updated_at' => null,
-            'deleted_at' => null,
-            'country' => [
-                'id' => 1,
-                'name' => 'France',
-                'code' => 'FR',
-            ],
-        ], $Park->company);
-    }
-
-    public function testGetCountry(): void
-    {
-        $Park = $this->model::find(1);
-        $this->assertEquals([
-            'id' => 1,
-            'name' => 'France',
-            'code' => 'FR',
-        ], $Park->country);
+        $this->expectException(ValidationException::class);
+        Park::new(['name' => 'default']);
     }
 }

@@ -1,29 +1,31 @@
 <?php
 declare(strict_types=1);
 
-namespace Robert2\API\Controllers;
+namespace Loxya\Controllers;
 
 use DI\Container;
-use Robert2\API\Config\Config;
-use Robert2\API\Errors\ValidationException;
-use Robert2\API\Models\Category;
-use Robert2\API\Models\User;
-use Robert2\API\Services\I18n;
-use Robert2\API\Services\View;
-use Robert2\Install\Install;
+use Loxya\Config\Config;
+use Loxya\Errors\Exception\ValidationException;
+use Loxya\Http\Request;
+use Loxya\Models\Category;
+use Loxya\Models\Enums\Group;
+use Loxya\Models\User;
+use Loxya\Services\I18n;
+use Loxya\Services\View;
+use Loxya\Support\Install;
+use Loxya\Support\Str;
+use Psr\Http\Message\ResponseInterface;
+use Respect\Validation\Exceptions\NestedValidationException;
+use Respect\Validation\Exceptions\ValidationException as RespectValidationException;
+use Respect\Validation\Rules as Rule;
+use Respect\Validation\Validator as V;
 use Slim\Http\Response;
-use Slim\Http\ServerRequest as Request;
 
-class SetupController extends BaseController
+final class SetupController extends BaseController
 {
-    /** @var View */
-    private $view;
+    private View $view;
 
-    /** @var I18n */
-    private $i18n;
-
-    /** @var array */
-    private $settings;
+    private I18n $i18n;
 
     public function __construct(Container $container, View $view, I18n $i18n)
     {
@@ -31,33 +33,92 @@ class SetupController extends BaseController
 
         $this->view = $view;
         $this->i18n = $i18n;
-        $this->settings = $container->get('settings');
     }
 
-    public function index(Request $request, Response $response)
+    public function index(Request $request, Response $response): ResponseInterface
     {
-        $installProgress = Install::getInstallProgress();
-        $currentStep = $installProgress['step'];
+        $currentStep = Install::getStep();
+        if ($currentStep === 'end') {
+            return $response->withRedirect('/login');
+        }
+
         $stepData = [];
         $error = false;
         $validationErrors = null;
 
-        $lang = $this->i18n->getCurrentLocale();
+        $lang = $this->i18n->getLanguage();
         $allCurrencies = Install::getAllCurrencies();
+        $allCountries = Install::getAllCountries();
 
-        if ($request->isGet() && $currentStep === 'welcome') {
-            return $this->view->render(
-                $response,
-                'install.twig',
-                $this->_getCheckRequirementsData() + ['lang' => $lang]
-            );
+        if ($request->isGet()) {
+            if ($currentStep === 'welcome') {
+                return $this->view->render(
+                    $response,
+                    'install.twig',
+                    $this->_getCheckRequirementsData() + ['lang' => $lang],
+                );
+            }
+
+            if ($currentStep === 'settings') {
+                $currentCurrency = is_array(Config::get('currency'))
+                    // - Rétro-compatibilité.
+                    ? Config::get('currency.iso')
+                    : Config::get('currency');
+
+                $stepData = [
+                    'currency' => $currentCurrency ?? 'EUR',
+                ];
+            }
+
+            if ($currentStep === 'company') {
+                $stepData = Config::get('companyData');
+
+                // - Rétrocompatibilité.
+                $isLegacyCountry = (
+                    !empty($stepData['country']) &&
+                    (
+                        strlen($stepData['country']) !== 2 ||
+                        strtoupper($stepData['country']) !== $stepData['country']
+                    )
+                );
+                if ($isLegacyCountry) {
+                    $normalizedCountry = Str::of($stepData['country'])
+                        ->transliterate(null)
+                        ->lower();
+
+                    $stepData['country'] = null;
+                    foreach ($allCountries as $country) {
+                        $_normalizedCountry = Str::of($country['name'])
+                            ->transliterate(null)
+                            ->lower();
+
+                        if ($normalizedCountry->exactly($_normalizedCountry)) {
+                            $stepData['country'] = $country['code'];
+                            break;
+                        }
+                    }
+                }
+            }
         }
 
         if ($request->isPost()) {
             $installData = $request->getParsedBody();
 
+            $stepSkipped = (
+                array_key_exists('skipped', $installData)
+                && $installData['skipped'] === 'yes'
+            );
+            if ($stepSkipped) {
+                $installData['skipped'] = true;
+            }
+
             if ($currentStep === 'settings') {
-                $installData['currency'] = $allCurrencies[$installData['currency']];
+                // - Pré-remplissage des données spécifiques à la Premium qui ne sont pas demandées
+                //   dans le wizard d'installation avec les valeurs par défaut, afin de les avoir
+                //   sous la main dans le fichier settings.json, le jour où on veut les renseigner.
+                foreach (['handScanner', 'email', 'notifications'] as $premiumSetting) {
+                    $installData[$premiumSetting] = Config::DEFAULT_SETTINGS[$premiumSetting];
+                }
             }
 
             if ($currentStep === 'company') {
@@ -65,50 +126,43 @@ class SetupController extends BaseController
                 ksort($installData);
             }
 
-            $stepSkipped = array_key_exists('skipped', $installData) && $installData['skipped'] === 'yes';
-            if ($stepSkipped) {
-                $installData['skipped'] = true;
-            }
-
             try {
-                $installProgress = Install::setInstallProgress($currentStep, $installData);
-
                 if ($currentStep === 'company') {
                     $this->_validateCompanyData($installData);
                 }
+                Install::setInstallProgress($currentStep, $installData);
 
                 if ($currentStep === 'database') {
                     $settings = Install::getSettingsFromInstallData();
-                    Config::saveCustomConfig($settings, true);
+                    Config::saveCustomConfig($settings);
                     Config::getPDO(); // - Try to connect to DB
                 }
 
                 if ($currentStep === 'dbStructure') {
-                    Install::createMissingTables();
-                    Install::insertInitialDataIntoDB();
+                    Install::migrateDatabase();
                 }
 
                 if ($currentStep === 'adminUser') {
-                    if ($stepSkipped && !User::where('group_id', 'admin')->exists()) {
+                    if ($stepSkipped && !User::where('group', Group::ADMINISTRATION)->exists()) {
                         throw new \InvalidArgumentException(
-                            "At least one user must exists. Please create an admin user."
+                            "At least one user must exists. Please create an administrator.",
                         );
                     }
 
                     if (!$stepSkipped) {
-                        $installData['user']['group_id'] = 'admin';
-                        $user = new User();
-                        $user->edit(null, $installData['user']);
+                        $installData['user']['group'] = Group::ADMINISTRATION;
+                        User::new($installData['user']);
                     }
                 }
 
                 if ($currentStep === 'categories') {
                     $categories = explode(',', $installData['categories']);
-                    $Category = new Category();
-                    $Category->bulkAdd(array_unique($categories));
+                    Category::bulkAdd(array_unique($categories));
                 }
-            } catch (\Exception $e) {
-                $installProgress = Install::setInstallProgress($currentStep);
+
+                return $response->withRedirect('/install');
+            } catch (\Throwable $e) {
+                Install::setInstallProgress($currentStep);
 
                 $stepData = $installData;
                 $error = $e->getMessage();
@@ -123,46 +177,55 @@ class SetupController extends BaseController
             }
         }
 
-        if ($installProgress['step'] === 'coreSettings' && empty($stepData['JWTSecret'])) {
-            $stepData['JWTSecret'] = md5(uniqid('Robert2', true));
+        if ($currentStep === 'coreSettings' && empty($stepData['JWTSecret'])) {
+            $stepData['JWTSecret'] = md5(uniqid('Loxya', true));
         }
 
-        if ($installProgress['step'] === 'settings') {
+        if ($currentStep === 'company') {
+            $stepData['countries'] = $allCountries;
+        }
+
+        if ($currentStep === 'settings') {
             $stepData['currencies'] = $allCurrencies;
         }
 
-        if ($installProgress['step'] === 'dbStructure') {
+        if ($currentStep === 'dbStructure') {
             try {
                 $stepData = [
                     'migrationStatus' => Install::getMigrationsStatus(),
-                    'canProcess' => true
+                    'canProcess' => true,
                 ];
-            } catch (\Exception $e) {
+            } catch (\Throwable $e) {
                 $stepData = [
                     'migrationStatus' => [],
                     'errorCode' => $e->getCode(),
                     'error' => $e->getMessage(),
-                    'canProcess' => false
+                    'canProcess' => false,
                 ];
             }
         }
 
-        if ($installProgress['step'] === 'adminUser') {
-            $stepData['existingAdmins'] = User::where('group_id', 'admin')->get()->toArray();
+        if ($currentStep === 'adminUser') {
+            $stepData['existingAdmins'] = User::where('group', Group::ADMINISTRATION)->get()->toArray();
         }
+
+        // - Données de configuration existantes.
+        $config = array_replace(Config::get(), [
+            'baseUrl' => Config::getBaseUrl(),
+        ]);
 
         return $this->view->render($response, 'install.twig', [
             'lang' => $lang,
-            'step' => $installProgress['step'],
-            'stepNumber' => array_search($installProgress['step'], Install::INSTALL_STEPS),
+            'step' => $currentStep,
+            'stepNumber' => array_search($currentStep, Install::INSTALL_STEPS),
             'error' => $error,
             'validationErrors' => $validationErrors,
             'stepData' => $stepData,
-            'config' => $this->settings,
+            'config' => $config,
         ]);
     }
 
-    public function endInstall(Request $request, Response $response)
+    public function endInstall(Request $request, Response $response): ResponseInterface
     {
         $steps = Install::INSTALL_STEPS;
 
@@ -172,53 +235,86 @@ class SetupController extends BaseController
         Install::setInstallProgress($prevStep, ['skipped' => true]);
         Install::setInstallProgress($endStep, []);
 
-        return $response
-            ->withHeader('Location', '/login')
-            ->withStatus(302);
+        return $response->withRedirect('/login');
     }
 
     // ------------------------------------------------------
     // -
-    // -    Internal methods
+    // -    Méthodes internes
     // -
     // ------------------------------------------------------
 
     private function _getCheckRequirementsData(): array
     {
         $phpVersion = PHP_VERSION;
-        if (strpos(PHP_VERSION, '+')) {
+        if (str_contains(PHP_VERSION, '+')) {
             $phpVersion = substr(PHP_VERSION, 0, strpos(PHP_VERSION, '+'));
         }
 
-        $phpversionOK = version_compare(PHP_VERSION, '7.3.0') >= 0;
+        $phpVersionMin = Install::MIN_PHP_VERSION;
+        $phpVersionMax = Install::MAX_PHP_VERSION;
+        $neededExtensions = Install::REQUIRED_EXTENSIONS;
+
         $loadedExtensions = get_loaded_extensions();
-        $neededExstensions = Install::REQUIRED_EXTENSIONS;
-        $missingExtensions = array_diff($neededExstensions, $loadedExtensions);
+        $phpversionIsAboveMin = version_compare(PHP_VERSION, $phpVersionMin, '>=');
+        $phpversionIsAboveMax = version_compare(
+            // - Réduit la version de PHP courante à la même précision que la contrainte max.
+            //   (e.g. Version de PHP : `8.3.4` / Contrainte : `8.4` => `8.3`)
+            implode('.', array_slice(
+                explode('.', $phpVersion),
+                0,
+                count(explode('.', $phpVersionMax)),
+            )),
+            $phpVersionMax,
+            '>',
+        );
+
+        $missingExtensions = array_diff($neededExtensions, $loadedExtensions);
 
         return [
             'step' => 'welcome',
             'phpVersion' => $phpVersion,
-            'phpVersionOK' => $phpversionOK,
+            'phpVersionMin' => $phpVersionMin,
+            'phpVersionMax' => $phpVersionMax,
+            'phpversionIsAboveMin' => $phpversionIsAboveMin,
+            'phpversionIsAboveMax' => $phpversionIsAboveMax,
             'missingExtensions' => $missingExtensions,
-            'requirementsOK' => $phpversionOK && empty($missingExtensions),
         ];
     }
 
     private function _validateCompanyData($companyData): void
     {
-        $errors = [];
-        foreach (['name', 'street', 'zipCode', 'locality'] as $mandatoryfield) {
-            if (empty($companyData[$mandatoryfield])) {
-                $errors[$mandatoryfield] = "Missing value";
-                continue;
-            }
+        $schema = new Rule\KeySet(
+            new Rule\Key('name', V::notEmpty()->stringType()),
+            new Rule\Key('street', V::notEmpty()->stringType()),
+            new Rule\Key('zipCode', V::notEmpty()->stringType()),
+            new Rule\Key('locality', V::notEmpty()->stringType()),
+            new Rule\Key('country', V::custom(
+                static function ($value) {
+                    V::notEmpty()->stringType()->check($value);
+                    $allCountries = array_column(Install::getAllCountries(), 'code');
+                    return in_array($value, $allCountries, true);
+                },
+            )),
+        );
+
+        try {
+            $schema->assert($companyData);
+        } catch (NestedValidationException $e) {
+            $errors = array_reduce(
+                iterator_to_array($e),
+                static function (array $errors, RespectValidationException $exception) {
+                    $errors[$exception->getParam('name')] = $exception->getMessage();
+                    return $errors;
+                },
+                [],
+            );
         }
 
         if (empty($errors)) {
             return;
         }
 
-        throw (new ValidationException)
-            ->setValidationErrors($errors);
+        throw new ValidationException($errors);
     }
 }

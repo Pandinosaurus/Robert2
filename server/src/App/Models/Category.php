@@ -1,144 +1,210 @@
 <?php
 declare(strict_types=1);
 
-namespace Robert2\API\Models;
+namespace Loxya\Models;
 
-use Illuminate\Database\Eloquent\SoftDeletes;
-use Illuminate\Database\QueryException;
-use Robert2\API\Validation\Validator as V;
-use Robert2\API\Errors\ValidationException;
+use Adbar\Dot as DotArray;
+use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Loxya\Contracts\Serializable;
+use Loxya\Errors\Exception\ValidationException;
+use Loxya\Models\Traits\Serializer;
+use Respect\Validation\Validator as V;
 
-class Category extends BaseModel
+/**
+ * Catégorie de matériel.
+ *
+ * @property-read ?int $id
+ * @property string $name
+ * @property-read bool $has_sub_categories
+ * @property-read CarbonImmutable $created_at
+ * @property-read CarbonImmutable|null $updated_at
+ *
+ * @property-read Collection<array-key, SubCategory> $subCategories
+ * @property-read Collection<array-key, SubCategory> $sub_categories
+ * @property-read Collection<array-key, Material> $materials
+ * @property-read Collection<array-key, Attribute> $attributes
+ */
+final class Category extends BaseModel implements Serializable
 {
-    protected $searchField = 'name';
+    use Serializer;
+
+    // - Types de sérialisation.
+    public const SERIALIZE_DEFAULT = 'default';
+    public const SERIALIZE_DETAILS = 'details';
 
     public function __construct(array $attributes = [])
     {
         parent::__construct($attributes);
 
         $this->validation = [
-            'name' => V::notEmpty()->length(2, 96)
+            'name' => V::custom([$this, 'checkName']),
         ];
     }
 
-    // ——————————————————————————————————————————————————————
-    // —
-    // —    Relations
-    // —
-    // ——————————————————————————————————————————————————————
+    // ------------------------------------------------------
+    // -
+    // -    Validation
+    // -
+    // ------------------------------------------------------
 
-    protected $appends = [
-        'sub_categories'
-    ];
-
-    public function SubCategories()
+    public function checkName($value)
     {
-        return $this->hasMany('Robert2\API\Models\SubCategory')
-            ->select(['id', 'name', 'category_id'])
+        V::notEmpty()
+            ->length(2, 96)
+            ->check($value);
+
+        $alreadyExists = static::query()
+            ->where('name', $value)
+            ->when($this->exists, fn (Builder $subQuery) => (
+                $subQuery->where('id', '!=', $this->id)
+            ))
+            ->exists();
+
+        return !$alreadyExists ?: 'category-name-already-in-use';
+    }
+
+    // ------------------------------------------------------
+    // -
+    // -    Relations
+    // -
+    // ------------------------------------------------------
+
+    public function subCategories(): HasMany
+    {
+        return $this->hasMany(SubCategory::class)
             ->orderBy('name');
     }
 
-    public function Materials()
+    public function materials(): HasMany
     {
-        return $this->hasMany('Robert2\API\Models\Material')->select([
-            'id',
-            'name',
-            'description',
-            'reference',
-            'park_id',
-            'rental_price',
-            'stock_quantity',
-            'out_of_order_quantity',
-            'replacement_price',
-        ]);
+        return $this->hasMany(Material::class)
+            ->orderBy('id');
     }
 
-    public function Attributes()
+    public function attributes(): BelongsToMany
     {
-        return $this->belongsToMany('Robert2\API\Models\Attribute', 'attribute_categories')
-            ->using('Robert2\API\Models\AttributeCategoriesPivot')
-            ->select(['attributes.id', 'attributes.name', 'attributes.type', 'attributes.unit']);
+        return $this->belongsToMany(Attribute::class, 'attribute_categories')
+            ->select([
+                'attributes.id',
+                'attributes.name',
+                'attributes.type',
+                'attributes.unit',
+            ]);
     }
 
-    // ——————————————————————————————————————————————————————
-    // —
-    // —    Mutators
-    // —
-    // ——————————————————————————————————————————————————————
+    // ------------------------------------------------------
+    // -
+    // -    Mutators
+    // -
+    // ------------------------------------------------------
 
-    protected $casts = ['name' => 'string'];
+    protected $casts = [
+        'name' => 'string',
+        'created_at' => 'immutable_datetime',
+        'updated_at' => 'immutable_datetime',
+    ];
 
-    public function getSubCategoriesAttribute()
+    /** @return Collection<array-key, SubCategory> */
+    public function getSubCategoriesAttribute(): Collection
     {
-        return $this->SubCategories()->get()->toArray();
+        return $this->getRelationValue('subCategories');
     }
 
-    public function getMaterialsAttribute()
+    public function getHasSubCategoriesAttribute(): bool
     {
-        return $this->Materials()->get()->toArray();
+        return $this->subCategories->isNotEmpty();
     }
 
-    // ——————————————————————————————————————————————————————
-    // —
-    // —    Getters
-    // —
-    // ——————————————————————————————————————————————————————
-
-    public function getIdsByNames(array $names): array
-    {
-        $categories = static::whereIn('name', $names)->get();
-        $ids = [];
-        foreach ($categories as $category) {
-            $ids[] = $category->id;
-        }
-        return $ids;
-    }
-
-    // ——————————————————————————————————————————————————————
-    // —
-    // —    Setters
-    // —
-    // ——————————————————————————————————————————————————————
+    // ------------------------------------------------------
+    // -
+    // -    Setters
+    // -
+    // ------------------------------------------------------
 
     protected $fillable = ['name'];
 
-    public function bulkAdd(array $categoriesNames = []): array
+    // ------------------------------------------------------
+    // -
+    // -    Méthodes liées à une "entity"
+    // -
+    // ------------------------------------------------------
+
+    public function edit(array $data): static
+    {
+        return dbTransaction(function () use ($data) {
+            $hasFailed = false;
+            $validationErrors = [];
+
+            try {
+                $this->fill($data)->save();
+            } catch (ValidationException $e) {
+                $validationErrors = $e->getValidationErrors();
+                $hasFailed = true;
+            }
+
+            if ($hasFailed) {
+                throw new ValidationException($validationErrors);
+            }
+
+            return $this->refresh();
+        });
+    }
+
+    // ------------------------------------------------------
+    // -
+    // -    Méthodes de "repository"
+    // -
+    // ------------------------------------------------------
+
+    public static function bulkAdd(array $categoriesNames = []): array
     {
         $categories = array_map(
-            function ($categoryName) {
+            static function ($categoryName) {
                 $existingCategory = static::where('name', $categoryName)->first();
                 if ($existingCategory) {
                     return $existingCategory;
                 }
 
                 $category = new static(['name' => trim($categoryName)]);
-                return tap($category, function ($instance) {
+                return tap($category, static function ($instance) {
                     $instance->validate();
                 });
             },
-            $categoriesNames
+            $categoriesNames,
         );
 
-        $this->getConnection()->transaction(function () use ($categories) {
-            try {
-                foreach ($categories as $category) {
-                    if (!$category->exists || $category->isDirty()) {
-                        $category->save();
-                    }
+        return dbTransaction(static function () use ($categories) {
+            foreach ($categories as $category) {
+                if (!$category->exists || $category->isDirty()) {
+                    $category->save();
+                    $category->refresh();
                 }
-            } catch (QueryException $e) {
-                throw (new ValidationException)
-                    ->setPDOValidationException($e);
+            }
+            return $categories;
+        });
+    }
+
+    // ------------------------------------------------------
+    // -
+    // -    Serialization
+    // -
+    // ------------------------------------------------------
+
+    public function serialize(string $format = self::SERIALIZE_DEFAULT): array
+    {
+        /** @var Category $category */
+        $category = tap(clone $this, static function (Category $category) use ($format) {
+            if ($format === self::SERIALIZE_DETAILS) {
+                return $category->append('sub_categories');
             }
         });
 
-        return $categories;
-    }
-
-    public function remove($id, array $options = []): ?BaseModel
-    {
-        $category = static::findOrFail($id);
-        $category->delete();
-        return null;
+        return (new DotArray($category->attributesForSerialization()))
+            ->delete(['created_at', 'updated_at'])
+            ->all();
     }
 }

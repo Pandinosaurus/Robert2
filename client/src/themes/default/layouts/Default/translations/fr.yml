@@ -1,0 +1,13 @@
+menu:
+    schedule-calendar: Planning
+    schedule-listing: Planning
+    materials: Matériel
+    technicians: Techniciens
+    beneficiaries: Bénéficiaires
+    parks: Parcs de matériel
+    users: Utilisateurs
+    settings: Paramètres
+    your-settings: Vos paramètres
+    logout-quit: Quitter Loxya
+    confirm-logout: "Voulez-vous vraiment vous déconnecter\_?"
+    yes-logout: "Oui, déconnexion"

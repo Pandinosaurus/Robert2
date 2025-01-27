@@ -1,95 +1,223 @@
 <?php
 declare(strict_types=1);
 
-namespace Robert2\API\Controllers;
+namespace Loxya\Controllers;
 
-use Robert2\API\Config\Config;
-use Robert2\API\Models\Event;
-use Robert2\API\Models\Person;
+use DI\Container;
+use Fig\Http\Message\StatusCodeInterface as StatusCode;
+use Illuminate\Database\Eloquent\Builder;
+use Loxya\Controllers\Traits\Crud;
+use Loxya\Errors\Exception\ValidationException;
+use Loxya\Http\Request;
+use Loxya\Models\Document;
+use Loxya\Models\Enums\Group;
+use Loxya\Models\Event;
+use Loxya\Models\EventTechnician;
+use Loxya\Models\Technician;
+use Loxya\Services\Auth;
+use Loxya\Services\I18n;
+use Loxya\Support\Arr;
+use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\UploadedFileInterface;
+use Slim\Exception\HttpBadRequestException;
 use Slim\Http\Response;
-use Slim\Http\ServerRequest as Request;
 
-class TechnicianController extends BaseController
+final class TechnicianController extends BaseController
 {
-    // ——————————————————————————————————————————————————————
-    // —
-    // —    Getters
-    // —
-    // ——————————————————————————————————————————————————————
+    use Crud\GetOne;
+    use Crud\SoftDelete;
 
-    public function getAll(Request $request, Response $response): Response
+    private I18n $i18n;
+
+    public function __construct(Container $container, I18n $i18n)
     {
-        $searchTerm = $request->getQueryParam('search', null);
-        $searchField = $request->getQueryParam('searchBy', null);
-        $orderBy = $request->getQueryParam('orderBy', null);
-        $limit = $request->getQueryParam('limit', null);
-        $ascending = (bool)$request->getQueryParam('ascending', true);
-        $withDeleted = (bool)$request->getQueryParam('deleted', false);
-        $startDate = $request->getQueryParam('startDate', null);
-        $endDate = $request->getQueryParam('endDate', null);
+        parent::__construct($container);
 
-        $technicianTag = $this->container->get('settings')['defaultTags']['technician'];
-
-        $builder = (new Person())
-            ->setOrderBy($orderBy, $ascending)
-            ->setSearch($searchTerm, $searchField)
-            ->getAllFilteredOrTagged([], [$technicianTag], $withDeleted);
-
-        if (!empty($startDate) && !empty($endDate)) {
-            $builder = $builder->whereDoesntHave('events', function ($query) use ($startDate, $endDate) {
-                $query->where([
-                    ['start_time', '>=', $startDate],
-                    ['end_time', '<=', $endDate],
-                ]);
-            });
-        }
-
-        $paginated = $this->paginate($request, $builder, $limit ? (int)$limit : null);
-        return $response->withJson($paginated);
+        $this->i18n = $i18n;
     }
 
-    public function getAllWhileEvent(Request $request, Response $response): Response
+    // ------------------------------------------------------
+    // -
+    // -    Actions
+    // -
+    // ------------------------------------------------------
+
+    public function getAll(Request $request, Response $response): ResponseInterface
     {
-        $eventId = (int)$request->getAttribute('eventId');
+        $search = $request->getStringQueryParam('search');
+        $limit = $request->getIntegerQueryParam('limit');
+        $ascending = $request->getBooleanQueryParam('ascending', true);
+        $availabilityPeriod = $request->getPeriodQueryParam('availabilityPeriod');
+        $onlyDeleted = $request->getBooleanQueryParam('deleted', false);
+        $orderBy = $request->getOrderByQueryParam('orderBy', Technician::class);
+
+        $query = Technician::query()
+            ->when(
+                $search !== null && mb_strlen($search) >= 2,
+                static fn (Builder $subQuery) => $subQuery->search($search),
+            )
+            ->when(
+                $availabilityPeriod !== null,
+                static fn (Builder $subQuery) => (
+                    $subQuery->whereDoesntHave('assignments', (
+                        static function (Builder $subSubQuery) use ($availabilityPeriod) {
+                            /** @var Builder|EventTechnician $subSubQuery */
+                            $subSubQuery->inPeriod($availabilityPeriod);
+                        }
+                    ))
+                ),
+            )
+            ->when($onlyDeleted, static fn (Builder $subQuery) => (
+                $subQuery->onlyTrashed()
+            ))
+            ->customOrderBy($orderBy, $ascending ? 'asc' : 'desc');
+
+        $results = $this->paginate($request, $query, $limit);
+        return $response->withJson($results, StatusCode::STATUS_OK);
+    }
+
+    public function getAllWhileEvent(Request $request, Response $response): ResponseInterface
+    {
+        $eventId = $request->getIntegerAttribute('eventId');
         $event = Event::findOrFail($eventId);
 
-        $technicianTag = Config::getSettings('defaultTags')['technician'];
+        $technicians = Technician::query()
+            ->customOrderBy('full_name')->get()
+            ->map(static function ($technician) use ($event) {
+                $events = $technician->assignments()
+                    ->whereHas('event', static function (Builder $query) use ($event) {
+                        /** @var Builder|Event $query */
+                        $query
+                            ->inPeriod($event)
+                            ->where('id', '!=', $event->id)
+                            ->where('deleted_at', null);
+                    })
+                    ->get()
+                    ->map(static fn (EventTechnician $eventTechnician) => (
+                        $eventTechnician->serialize(
+                            EventTechnician::SERIALIZE_FOR_TECHNICIAN,
+                        )
+                    ))
+                    ->all();
 
-        /** @var Person[] */
-        $technicians = (new Person)
-            ->getAll()
-            ->whereHas('tags', function ($query) use ($technicianTag) {
-                $query->where('name', $technicianTag);
+                return array_replace($technician->serialize(), compact('events'));
             })
-            ->get();
+            ->all();
 
-        $results = [];
-        foreach ($technicians as $technician) {
-            $events = $technician->Events()
-                ->whereHas('event', function ($query) use ($event) {
-                    $query
-                        ->where('id', '!=', $event->id)
-                        ->where([
-                            ['end_date', '>=', $event->start_date],
-                            ['start_date', '<=', $event->end_date],
-                        ]);
-                })
-                ->get();
-
-            $results[] = array_replace($technician->toArray(), [
-                'events' => $events->toArray(),
-            ]);
-        }
-
-        return $response->withJson($results);
+        return $response->withJson($technicians, StatusCode::STATUS_OK);
     }
 
-    public function getEvents(Request $request, Response $response): Response
+    public function getEvents(Request $request, Response $response): ResponseInterface
     {
         $id = $request->getAttribute('id');
+        $technician = Technician::findOrFail($id);
 
-        $technician = Person::findOrFail($id);
+        $data = $technician->assignments
+            ->whereNull('event.deleted_at')
+            ->values()
+            ->map(
+                static fn (EventTechnician $eventTechnician) => (
+                    $eventTechnician->serialize(
+                        EventTechnician::SERIALIZE_FOR_TECHNICIAN,
+                    )
+                )
+            );
 
-        return $response->withJson($technician->events, SUCCESS_OK);
+        return $response->withJson($data, StatusCode::STATUS_OK);
+    }
+
+    public function getDocuments(Request $request, Response $response): ResponseInterface
+    {
+        $id = $request->getIntegerAttribute('id');
+        $technician = Technician::findOrFail($id);
+
+        return $response->withJson($technician->documents, StatusCode::STATUS_OK);
+    }
+
+    public function attachDocument(Request $request, Response $response): ResponseInterface
+    {
+        $id = $request->getIntegerAttribute('id');
+        $technician = Technician::findOrFail($id);
+
+        /** @var UploadedFileInterface[] $uploadedFiles */
+        $uploadedFiles = $request->getUploadedFiles();
+        if (count($uploadedFiles) !== 1) {
+            throw new HttpBadRequestException($request, "Invalid number of files sent: a single file is expected.");
+        }
+
+        $file = array_values($uploadedFiles)[0];
+        $document = new Document(compact('file'));
+        $document->author()->associate(Auth::user());
+        $technician->documents()->save($document);
+
+        return $response->withJson($document, StatusCode::STATUS_CREATED);
+    }
+
+    public function create(Request $request, Response $response): ResponseInterface
+    {
+        $withUser = Auth::is(Group::ADMINISTRATION)
+            ? $request->getBooleanQueryParam('withUser', false)
+            : false;
+
+        $postData = (array) $request->getParsedBody();
+        if (empty($postData)) {
+            throw new HttpBadRequestException($request, "No data was provided.");
+        }
+
+        $postData = Technician::unserialize($postData);
+        if (!$withUser) {
+            $postData = Arr::except($postData, ['user', 'user_id']);
+        }
+
+        try {
+            $technician = Technician::new($postData, $withUser);
+        } catch (ValidationException $e) {
+            $errors = Technician::serializeValidation($e->getValidationErrors());
+            throw new ValidationException($errors);
+        }
+
+        $technician = static::_formatOne($technician);
+        return $response->withJson($technician, StatusCode::STATUS_CREATED);
+    }
+
+    public function update(Request $request, Response $response): ResponseInterface
+    {
+        $id = $request->getIntegerAttribute('id');
+        $withUser = Auth::is(Group::ADMINISTRATION)
+            ? $request->getBooleanQueryParam('withUser', false)
+            : false;
+
+        $technician = Technician::findOrFail($id);
+
+        $postData = (array) $request->getParsedBody();
+        if (empty($postData)) {
+            throw new HttpBadRequestException($request, "No data was provided.");
+        }
+
+        $postData = Technician::unserialize($postData);
+        if (!$withUser) {
+            $postData = Arr::except($postData, ['user', 'user_id']);
+        }
+
+        try {
+            $technician->edit($postData, $withUser);
+        } catch (ValidationException $e) {
+            $errors = Technician::serializeValidation($e->getValidationErrors());
+            throw new ValidationException($errors);
+        }
+
+        $technician = static::_formatOne($technician);
+        return $response->withJson($technician, StatusCode::STATUS_OK);
+    }
+
+    // ------------------------------------------------------
+    // -
+    // -    Méthodes internes
+    // -
+    // ------------------------------------------------------
+
+    protected static function _formatOne(Technician $technician): array
+    {
+        return $technician->serialize(Technician::SERIALIZE_DETAILS);
     }
 }

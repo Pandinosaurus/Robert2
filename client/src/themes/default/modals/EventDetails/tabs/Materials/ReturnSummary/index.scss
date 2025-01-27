@@ -1,0 +1,56 @@
+@use '~@/themes/default/style/globals';
+@use 'sass:color';
+
+.EventDetailsReturnSummary {
+    $block: &;
+
+    margin-bottom: globals.$spacing-medium;
+    padding: globals.$spacing-medium globals.$spacing-large;
+    border-radius: globals.$border-radius-normal;
+    background: globals.$bg-color-emphasis-success;
+
+    &__header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+
+    &__title {
+        margin: 0;
+        color: globals.$text-success-color;
+        font-size: 1.2rem;
+        font-weight: 500;
+    }
+
+    &__list {
+        width: 100%;
+        margin-top: globals.$spacing-medium;
+        text-align: left;
+        border-collapse: collapse;
+    }
+
+    &--centered {
+        text-align: center;
+
+        #{$block}__header {
+            justify-content: center;
+        }
+    }
+
+    //
+    // - State: Avec problèmes.
+    //
+
+    &--has-problems {
+        background-color: globals.$bg-color-emphasis-danger;
+        color: globals.$color-emphasis-danger-base;
+
+        #{$block}__title {
+            color: globals.$color-emphasis-danger-base;
+
+            @include globals.icon('exclamation-triangle') {
+                margin-right: globals.$spacing-small;
+            }
+        }
+    }
+}

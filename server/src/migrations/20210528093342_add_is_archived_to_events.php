@@ -1,9 +1,11 @@
 <?php
+declare(strict_types=1);
+
 use Phinx\Migration\AbstractMigration;
 
-class AddIsArchivedToEvents extends AbstractMigration
+final class AddIsArchivedToEvents extends AbstractMigration
 {
-    public function up()
+    public function up(): void
     {
         $table = $this->table('events');
         $table
@@ -15,7 +17,7 @@ class AddIsArchivedToEvents extends AbstractMigration
             ->save();
     }
 
-    public function down()
+    public function down(): void
     {
         $events = $this->table('events');
         $events

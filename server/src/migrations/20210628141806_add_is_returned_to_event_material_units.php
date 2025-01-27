@@ -1,24 +1,28 @@
 <?php
+declare(strict_types=1);
+
 use Phinx\Migration\AbstractMigration;
 
-class AddIsReturnedToEventMaterialUnits extends AbstractMigration
+final class AddIsReturnedToEventMaterialUnits extends AbstractMigration
 {
-    public function up()
+    public function up(): void
     {
         $table = $this->table('event_material_units');
         $table
             ->addColumn('is_returned', 'boolean', [
+                'null' => false,
                 'default' => false,
                 'after' => 'material_unit_id',
             ])
             ->addColumn('is_returned_broken', 'boolean', [
+                'null' => false,
                 'default' => false,
                 'after' => 'is_returned',
             ])
             ->save();
     }
 
-    public function down()
+    public function down(): void
     {
         $table = $this->table('event_material_units');
         $table

@@ -1,0 +1,65 @@
+title: 'Return Inventory of the event "{name}"'
+title-simple: Return Inventory of the event
+
+unavailabilities:
+    unknown: This return inventory is currently unavailable.
+    archived: >-
+        The return inventory for this event is no longer accessible
+        because the event is archived.
+    event-not-started: >-
+        This event has not started yet, so it's not possible to do
+        its return inventory for the moment.
+    no-materials: >-
+        This event does not contain material, so the return inventory
+        is not available.
+    material-shortage:
+        "The return inventory cannot be completed because the event contains
+        material in shortage/surplus which must be resolved manually.
+        \n\n
+        Please change excess quantities back to quantities that can be
+        satisfied with available stock before trying again."
+
+statuses:
+    done:
+        simple: This inventory has been marked as completed, it is now read-only.
+        with-author: This inventory has been marked as completed by {author}, it is now read-only.
+        with-date: This inventory has been marked as completed {relativeDate}, it is now read-only.
+        with-author-date: This inventory has been marked as completed by {author} {relativeDate}, it is now read-only.
+
+    all-material-returned: "All materials were returned for this event."
+    some-material-is-missing: Some materials did not return from this event!
+    some-material-came-back-broken: Some materials came back broken from this event!
+
+alerts:
+    not-saved-yet: Please note that this return inventory has not yet been saved!
+    not-finished-yet: >-
+        This event is not yet finished, you can start its inventory,
+        but you cannot terminate it.
+    all-material-returned:
+        "Congratulations! All materials were returned for this event.\n
+        You can now click on \"Terminate inventory\" button."
+    all-material-returned-draft:
+        "Congratulations! All materials marked as returned for this event.\n
+        You will be able to mark the inventory as finished when the event has ended."
+
+actions:
+    update-materials: Update event material
+
+confirm-terminate-title: Do you really want to terminate this return inventory?
+confirm-terminate-text: Please note that it will no longer be possible to modify it.
+confirm-terminate-text-with-broken: >-
+    This will update all the "out of order" quantities for the concerned
+    materials, and it will no longer be possible to modify this inventory.
+
+put-back-on-hold: Put inventory back on hold
+put-back-on-hold-and-restore-stock: Put inventory back on hold and restore stock
+confirm-rollback-title: "Do you really want to put this return inventory back on hold?"
+confirm-rollback-text: |
+    This will result in the cancellation of the submission, as if the inventory had never been finalized.
+confirm-rollback-with-broken-text: |
+    This will result in the cancellation of the submission, as if the inventory had never been finalized.
+
+    Please note that material quantities that had been marked as broken will also be returned to stock, if the available quantities allow it.
+    Please be sure to edit these materials to adjust the quantities of broken items if necessary.
+
+saved: Inventory saved

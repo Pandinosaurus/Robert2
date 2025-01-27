@@ -1,48 +1,77 @@
 <?php
 declare(strict_types=1);
 
-namespace Robert2\API\Controllers;
+namespace Loxya\Controllers;
 
-use Robert2\API\Controllers\Traits\WithModel;
-use Robert2\API\Models\Setting;
+use Fig\Http\Message\StatusCodeInterface as StatusCode;
+use Loxya\Http\Request;
+use Loxya\Models\Enums\Group;
+use Loxya\Models\OpeningHour;
+use Loxya\Models\Setting;
+use Loxya\Services\Auth;
+use Loxya\Support\Arr;
+use Psr\Http\Message\ResponseInterface;
+use Slim\Exception\HttpBadRequestException;
 use Slim\Http\Response;
-use Slim\Http\ServerRequest as Request;
 
-class SettingController extends BaseController
+final class SettingController extends BaseController
 {
-    use WithModel;
-
-    // ——————————————————————————————————————————————————————
-    // —
-    // —    Getters
-    // —
-    // ——————————————————————————————————————————————————————
-
-    public function getAll(Request $request, Response $response): Response
+    public function getAll(Request $request, Response $response): ResponseInterface
     {
-        $settings = Setting::getList();
-        return $response->withJson($settings);
+        $isAdmin = Auth::is(Group::ADMINISTRATION);
+        $settings = Setting::getList($isAdmin);
+
+        // - Ajout des horaires d'ouverture.
+        Arr::set($settings, 'general.openingHours', OpeningHour::all());
+
+        // - Ajout de l'URL public et du mode d'affichage du calendrier, si activé.
+        $publicCalendar = $settings['calendar']['public'];
+        if ($isAdmin && $publicCalendar['enabled']) {
+            $settings['calendar']['public']['url'] = null;
+            if (!empty($publicCalendar['uuid'])) {
+                $settings['calendar']['public']['url'] = (
+                    urlFor('public-calendar', [
+                        'uuid' => $publicCalendar['uuid'],
+                    ])
+                );
+            }
+        }
+        if (!$publicCalendar['enabled']) {
+            unset($settings['calendar']['public']['displayedPeriod']);
+        }
+        unset($settings['calendar']['public']['uuid']);
+
+        // - Spécifique OSS
+        unset($settings['reservation']);
+        unset($settings['eventSummary']['showUnitsSerialNumbers']);
+
+        return $response->withJson($settings, StatusCode::STATUS_OK);
     }
 
-    // ——————————————————————————————————————————————————————
-    // —
-    // —    Setters
-    // —
-    // ——————————————————————————————————————————————————————
-
-    public function update(Request $request, Response $response): Response
+    public function update(Request $request, Response $response): ResponseInterface
     {
-        $postData = (array)$request->getParsedBody();
+        $postData = (array) $request->getParsedBody();
         if (empty($postData)) {
-            throw new \InvalidArgumentException(
-                "Missing request data to process validation",
-                ERROR_VALIDATION
-            );
+            throw new HttpBadRequestException($request, "No data was provided.");
         }
 
-        Setting::staticEdit(null, $postData);
+        Setting::bulkEdit($postData);
 
-        $settings = Setting::getList();
-        return $response->withJson($settings, SUCCESS_OK);
+        return $this->getAll($request, $response);
+    }
+
+    public function reset(Request $request, Response $response): ResponseInterface
+    {
+        $key = $request->getAttribute('key');
+
+        // - La partie client manipule l'URL formatée du calendrier public
+        //   => On permet donc le reset via cette "clé".
+        if ($key === 'calendar.public.url') {
+            $key = 'calendar.public.uuid';
+        }
+
+        Setting::findOrFail($key)->reset();
+
+        return $this->getAll($request, $response);
     }
 }

@@ -1,35 +1,71 @@
 <?php
 declare(strict_types=1);
 
+use Loxya\Config\Config;
+use Loxya\Console\Command;
+use Loxya\Services;
+use Odan\Session\FlashInterface;
+use Odan\Session\MemorySession;
+use Odan\Session\PhpSession;
+use Odan\Session\SessionInterface;
+use Odan\Session\SessionManagerInterface;
 use Psr\Cache\CacheItemPoolInterface;
 use Psr\Container\ContainerInterface;
-use Robert2\API\Console\Command;
-use Robert2\API\Services;
-use Symfony\Component\Cache\Adapter\AbstractAdapter;
 use Symfony\Component\Cache\Adapter\FilesystemAdapter;
+use Symfony\Component\Cache\Adapter\TagAwareAdapter;
 use Symfony\Contracts\Cache\CacheInterface;
 
 return [
-    'logger' => function (ContainerInterface $container) {
-        $settings = $container->get('settings')['logger'] ?? [];
+    'logger' => static function () {
+        $settings = Config::get('logger', []);
         return new Services\Logger($settings);
     },
 
-    'auth' => function () {
-        return new Services\Auth([
-            new Services\Auth\JWT,
+    'auth' => static function (ContainerInterface $container) {
+        $authenticators = $container->get('auth.authenticators');
+        return new Services\Auth($authenticators);
+    },
+
+    'session' => static function () {
+        $shouldSecureCookie = Config::isSslEnabled();
+        $sessionClass = Config::getEnv() !== 'test'
+            ? PhpSession::class
+            : MemorySession::class;
+
+        return new $sessionClass([
+            'name' => 'LOXYA_SESSION',
+            'lifetime' => 0,
+            'path' => '/',
+            'httponly' => true,
+            'secure' => $shouldSecureCookie,
+            'cache_limiter' => 'nocache',
+
+            // - Note: Permet la création de cookies lorsque Loxya est
+            //   intégré dans des systèmes tiers (e.g. Notion).
+            'cookie_samesite' => $shouldSecureCookie ? 'None' : 'Lax',
         ]);
     },
 
-    'cache' => function (): AbstractAdapter {
-        return new FilesystemAdapter('core', 0, CACHE_FOLDER);
-    },
+    'auth.authenticators' => DI\add([
+        DI\get(Services\Auth\JWT::class),
+    ]),
+
+    'cache' => static fn (): TagAwareAdapter => (
+        new TagAwareAdapter(
+            new FilesystemAdapter('core', 0, CACHE_FOLDER),
+        )
+    ),
+
+    'flash' => static fn (ContainerInterface $container) => (
+        $container->get(SessionInterface::class)->getFlash()
+    ),
 
     'console.commands' => DI\add([
         DI\get(Command\Migrations\MigrateCommand::class),
         DI\get(Command\Migrations\StatusCommand::class),
         DI\get(Command\Migrations\RollbackCommand::class),
         DI\get(Command\Migrations\CreateCommand::class),
+        DI\get(Command\Test\EmailCommand::class),
     ]),
 
     //
@@ -38,10 +74,14 @@ return [
 
     'i18n' => DI\get(Services\I18n::class),
     'view' => DI\get(Services\View::class),
+    'mailer' => DI\get(Services\Mailer::class),
     'httpCache' => DI\get(\Slim\HttpCache\CacheProvider::class),
 
     Services\Auth::class => DI\get('auth'),
     Services\Logger::class => DI\get('logger'),
     CacheInterface::class => DI\get('cache'),
     CacheItemPoolInterface::class => DI\get('cache'),
+    SessionManagerInterface::class => DI\get('session'),
+    SessionInterface::class => DI\get('session'),
+    FlashInterface::class => DI\get('flash'),
 ];

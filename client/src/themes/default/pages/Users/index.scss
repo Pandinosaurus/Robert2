@@ -1,0 +1,62 @@
+@use '~@/themes/default/style/globals';
+
+.Users {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+
+    &__table {
+        flex: 1;
+    }
+
+    &__cell {
+        &__empty {
+            color: globals.$text-light-color;
+            font-style: italic;
+        }
+
+        &--group,
+        &--email,
+        &--phone {
+            display: none;
+        }
+
+        //
+        // - Responsive
+        //
+
+        @media (min-width: globals.$screen-mobile) {
+            &--group {
+                display: table-cell;
+            }
+        }
+
+        @media (min-width: globals.$screen-tablet) {
+            &--email {
+                display: table-cell;
+            }
+        }
+
+        @media (min-width: globals.$screen-desktop) {
+            &--phone {
+                display: table-cell;
+            }
+        }
+    }
+
+    &__name {
+        display: flex;
+        align-items: center;
+        gap: globals.$spacing-small;
+    }
+
+    &__full-name {
+        font-weight: 600;
+    }
+
+    &__pseudo {
+        display: block;
+        color: #a7a7a7;
+        font-weight: 400;
+    }
+}

@@ -1,275 +1,188 @@
 <?php
-namespace Robert2\Tests;
+declare(strict_types=1);
+
+namespace Loxya\Tests;
+
+use Fig\Http\Message\StatusCodeInterface as StatusCode;
+use Loxya\Models\Company;
 
 final class CompaniesTest extends ApiTestCase
 {
-    public function testGetCompanies()
+    public static function data(?int $id = null)
+    {
+        return static::dataFactory($id, [
+            [
+                'id' => 1,
+                'legal_name' => 'Testing, Inc',
+                'street' => '1, company st.',
+                'postal_code' => '1234',
+                'locality' => 'Megacity',
+                'country_id' => 1,
+                'full_address' => "1, company st.\n1234 Megacity",
+                'phone' => '+4123456789',
+                'note' => 'Just for tests',
+                'country' => CountriesTest::data(1),
+            ],
+            [
+                'id' => 2,
+                'legal_name' => 'Obscure',
+                'street' => null,
+                'postal_code' => null,
+                'locality' => null,
+                'country_id' => null,
+                'full_address' => null,
+                'phone' => null,
+                'note' => null,
+                'country' => null,
+            ],
+        ]);
+    }
+
+    public function testGetCompanies(): void
     {
         $this->client->get('/api/companies');
-        $this->assertStatusCode(SUCCESS_OK);
-        $this->assertResponseData([
-            'pagination' => [
-                'current_page'   => 1,
-                'from'           => 1,
-                'last_page'      => 1,
-                'path'           => '/api/companies',
-                'first_page_url' => '/api/companies?page=1',
-                'next_page_url'  => null,
-                'prev_page_url'  => null,
-                'last_page_url'  => '/api/companies?page=1',
-                'per_page'       => $this->settings['maxItemsPerPage'],
-                'to'             => 2,
-                'total'          => 2,
-            ],
-            'data' => [
-                [
-                    'id'          => 2,
-                    'legal_name'  => 'Obscure',
-                    'street'      => null,
-                    'postal_code' => null,
-                    'locality'    => null,
-                    'country_id'  => null,
-                    'phone'       => null,
-                    'note'        => null,
-                    'created_at'  => null,
-                    'updated_at'  => null,
-                    'deleted_at'  => null,
-                    'country'     => null,
-                ],
-                [
-                    'id'          => 1,
-                    'legal_name'  => 'Testing, Inc',
-                    'street'      => '1, company st.',
-                    'postal_code' => '1234',
-                    'locality'    => 'Megacity',
-                    'country_id'  => 1,
-                    'phone'       => '+4123456789',
-                    'note'        => 'Just for tests',
-                    'created_at'  => null,
-                    'updated_at'  => null,
-                    'deleted_at'  => null,
-                    'country'     => [
-                        'id'   => 1,
-                        'name' => 'France',
-                        'code' => 'FR',
-                    ],
-                ],
-            ],
+        $this->assertStatusCode(StatusCode::STATUS_OK);
+        $this->assertResponsePaginatedData(2, [
+            self::data(2),
+            self::data(1),
         ]);
 
         $this->client->get('/api/companies?deleted=1');
-        $this->assertStatusCode(SUCCESS_OK);
-        $this->assertResponsePaginatedData(0, '/api/companies', 'deleted=1');
+        $this->assertStatusCode(StatusCode::STATUS_OK);
+        $this->assertResponsePaginatedData(0);
     }
 
-    public function testGetCompanyNotFound()
+    public function testGetCompanyNotFound(): void
     {
         $this->client->get('/api/companies/999');
-        $this->assertNotFound();
+        $this->assertStatusCode(StatusCode::STATUS_NOT_FOUND);
     }
 
-    public function testGetCompany()
+    public function testGetCompany(): void
     {
         $this->client->get('/api/companies/1');
-        $this->assertStatusCode(SUCCESS_OK);
+        $this->assertStatusCode(StatusCode::STATUS_OK);
         $this->assertResponseData([
-            'id'          => 1,
-            'legal_name'  => 'Testing, Inc',
-            'street'      => '1, company st.',
+            'id' => 1,
+            'legal_name' => 'Testing, Inc',
+            'street' => '1, company st.',
             'postal_code' => '1234',
-            'locality'    => 'Megacity',
-            'country_id'  => 1,
-            'phone'       => '+4123456789',
-            'note'        => 'Just for tests',
-            'created_at'  => null,
-            'updated_at'  => null,
-            'deleted_at'  => null,
-            'country'     => [
-                'id'   => 1,
-                'name' => 'France',
-                'code' => 'FR',
-            ],
+            'locality' => 'Megacity',
+            'country_id' => 1,
+            'full_address' => "1, company st.\n1234 Megacity",
+            'phone' => '+4123456789',
+            'note' => 'Just for tests',
+            'country' => CountriesTest::data(1),
         ]);
     }
 
-    public function testGetCompanySearchByLegalName()
+    public function testGetCompanySearchByLegalName(): void
     {
         $this->client->get('/api/companies?search=testin');
-        $this->assertStatusCode(SUCCESS_OK);
+        $this->assertStatusCode(StatusCode::STATUS_OK);
         $this->assertResponseData([
             'pagination' => [
-                'current_page'   => 1,
-                'from'           => 1,
-                'last_page'      => 1,
-                'path'           => '/api/companies',
-                'first_page_url' => '/api/companies?search=testin&page=1',
-                'next_page_url'  => null,
-                'prev_page_url'  => null,
-                'last_page_url'  => '/api/companies?search=testin&page=1',
-                'per_page'       => $this->settings['maxItemsPerPage'],
-                'to'             => 1,
-                'total'          => 1,
+                'currentPage' => 1,
+                'perPage' => 100,
+                'total' => ['items' => 1, 'pages' => 1],
             ],
             'data' => [
                 [
-                    'id'          => 1,
-                    'legal_name'  => 'Testing, Inc',
-                    'street'      => '1, company st.',
+                    'id' => 1,
+                    'legal_name' => 'Testing, Inc',
+                    'street' => '1, company st.',
                     'postal_code' => '1234',
-                    'locality'    => 'Megacity',
-                    'country_id'  => 1,
-                    'phone'       => '+4123456789',
-                    'note'        => 'Just for tests',
-                    'created_at'  => null,
-                    'updated_at'  => null,
-                    'deleted_at'  => null,
-                    'country'     => [
-                        'id'   => 1,
-                        'name' => 'France',
-                        'code' => 'FR',
-                    ],
+                    'locality' => 'Megacity',
+                    'country_id' => 1,
+                    'full_address' => "1, company st.\n1234 Megacity",
+                    'phone' => '+4123456789',
+                    'note' => 'Just for tests',
+                    'country' => CountriesTest::data(1),
                 ],
             ],
         ]);
     }
 
-    public function testGetPersonsNotFound()
-    {
-        $this->client->get('/api/companies/999/persons');
-        $this->assertNotFound();
-    }
-
-    public function testGetPersons()
-    {
-        $this->client->get('/api/companies/1/persons');
-        $this->assertStatusCode(SUCCESS_OK);
-        $this->assertResponsePaginatedData(1, '/api/companies/1/persons');
-    }
-
-    public function testCreateCompanyWithoutData()
+    public function testCreateCompanyWithoutData(): void
     {
         $this->client->post('/api/companies');
-        $this->assertStatusCode(ERROR_VALIDATION);
-        $this->assertErrorMessage("Missing request data to process validation");
+        $this->assertStatusCode(StatusCode::STATUS_BAD_REQUEST);
+        $this->assertApiErrorMessage("No data was provided.");
     }
 
-    public function testCreateCompanyBadData()
+    public function testCreateCompanyBadData(): void
     {
         $this->client->post('/api/companies', ['foo' => 'bar']);
-        $this->assertStatusCode(ERROR_VALIDATION);
-        $this->assertValidationErrorMessage();
-        $this->assertErrorDetails([
-            'legal_name' => [
-                "legal_name must not be empty",
-                "legal_name must have a length between 1 and 191"
-            ]
+        $this->assertApiValidationError([
+            'legal_name' => "This field is mandatory.",
         ]);
     }
 
-    public function testCreateCompanyDuplicate()
+    public function testCreateCompanyDuplicate(): void
     {
         $this->client->post('/api/companies', [
-            'id'         => null,
+            'id' => null,
             'legal_name' => 'Testing, Inc',
         ]);
-        $this->assertStatusCode(ERROR_DUPLICATE);
-        $this->assertValidationErrorMessage();
+        $this->assertApiValidationError();
     }
 
-    public function testCreateCompany()
+    public function testCreateCompany(): void
     {
         $data = [
-            'legal_name'  => 'test company',
-            'street'      => 'Somewhere street, 123',
+            'legal_name' => 'test company',
+            'street' => 'Somewhere street, 123',
             'postal_code' => '75000',
-            'locality'    => 'Paris',
-            'country_id'  => 1,
+            'locality' => 'Paris',
+            'country_id' => 1,
+            'phone' => '+00336 25 25 21 25',
         ];
         $this->client->post('/api/companies', $data);
-        $this->assertStatusCode(SUCCESS_CREATED);
+        $this->assertStatusCode(StatusCode::STATUS_CREATED);
         $this->assertResponseData([
-            'id'          => 3,
-            'legal_name'  => 'test company',
-            'street'      => 'Somewhere street, 123',
+            'id' => 3,
+            'legal_name' => 'test company',
+            'street' => 'Somewhere street, 123',
             'postal_code' => '75000',
-            'locality'    => 'Paris',
-            'country_id'  => 1,
-            'phone'       => null,
-            'note'        => null,
-            'created_at'  => 'fakedTestContent',
-            'updated_at'  => 'fakedTestContent',
-            'deleted_at'  => null,
-            'country'     => [
-                'id'   => 1,
-                'name' => 'France',
-                'code' => 'FR',
-            ],
-        ], ['created_at', 'updated_at']);
+            'locality' => 'Paris',
+            'country_id' => 1,
+            'full_address' => "Somewhere street, 123\n75000 Paris",
+            'phone' => '+0033625252125',
+            'note' => null,
+            'country' => CountriesTest::data(1),
+        ]);
     }
 
-    public function testCreateCompanyWithTagAndPhone()
+    public function testDeleteAndDestroyCompany(): void
     {
-        $data = [
-            'legal_name'  => 'test company',
-            'street'      => 'Somewhere street, 123',
-            'postal_code' => '75000',
-            'locality'    => 'Paris',
-            'country_id'  => 1,
-            'phone'       => '+00336 25 25 21 25',
-            'tags'        => ['Bénéficiaire'],
-        ];
-        $this->client->post('/api/companies', $data);
-        $this->assertStatusCode(SUCCESS_CREATED);
-        $this->assertResponseData([
-            'id'          => 3,
-            'legal_name'  => 'test company',
-            'street'      => 'Somewhere street, 123',
-            'postal_code' => '75000',
-            'locality'    => 'Paris',
-            'country_id'  => 1,
-            'phone'       => '+0033625252125',
-            'note'        => null,
-            'created_at'  => 'fakedTestContent',
-            'updated_at'  => 'fakedTestContent',
-            'deleted_at'  => null,
-            'country'     => [
-                'id'   => 1,
-                'name' => 'France',
-                'code' => 'FR',
-            ],
-        ], ['created_at', 'updated_at']);
+        // - First call: soft delete.
+        $this->client->delete('/api/companies/2');
+        $this->assertStatusCode(StatusCode::STATUS_NO_CONTENT);
+        $softDeleted = Company::withTrashed()->find(2);
+        $this->assertNotNull($softDeleted);
+        $this->assertNotEmpty($softDeleted->deleted_at);
+
+        // - Second call: actually DESTROY record from DB
+        $this->client->delete('/api/companies/2');
+        $this->assertStatusCode(StatusCode::STATUS_NO_CONTENT);
+        $this->assertNull(Company::withTrashed()->find(2));
     }
 
-    public function testDeleteAndDestroyCompany()
-    {
-        // - First call : sets `deleted_at` not null
-        $this->client->delete('/api/companies/2');
-        $this->assertStatusCode(SUCCESS_OK);
-        $response = $this->_getResponseAsArray();
-        $this->assertNotEmpty($response['deleted_at']);
-
-        // - Second call : actually DESTROY record from DB
-        $this->client->delete('/api/companies/2');
-        $this->assertStatusCode(SUCCESS_OK);
-        $this->assertResponseData(['destroyed' => true]);
-    }
-
-    public function testRestoreCompanyNotFound()
+    public function testRestoreCompanyNotFound(): void
     {
         $this->client->put('/api/companies/restore/999');
-        $this->assertNotFound();
+        $this->assertStatusCode(StatusCode::STATUS_NOT_FOUND);
     }
 
-    public function testRestoreCompany()
+    public function testRestoreCompany(): void
     {
         // - First, delete company #2
         $this->client->delete('/api/companies/2');
-        $this->assertStatusCode(SUCCESS_OK);
+        $this->assertStatusCode(StatusCode::STATUS_NO_CONTENT);
 
         // - Then, restore company #2
         $this->client->put('/api/companies/restore/2');
-        $this->assertStatusCode(SUCCESS_OK);
-        $response = $this->_getResponseAsArray();
-        $this->assertEmpty($response['deleted_at']);
+        $this->assertStatusCode(StatusCode::STATUS_OK);
+        $this->assertNotNull(Company::find(2));
     }
 }

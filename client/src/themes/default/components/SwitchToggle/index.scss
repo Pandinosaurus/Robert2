@@ -1,0 +1,123 @@
+@use '~@/themes/default/style/globals';
+@use 'sass:color';
+
+$size: 1.7rem;
+
+.SwitchToggle {
+    $block: &;
+
+    display: inline-flex;
+
+    &__field {
+        display: inline-flex;
+        align-items: center;
+        gap: globals.$spacing-small;
+    }
+
+    &__slide {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        width: $size * 2.2;
+        height: $size;
+        border-radius: $size;
+        background: globals.$bg-color-emphasis;
+        transition: background 300ms;
+        cursor: pointer;
+
+        &__button {
+            flex: 0 0 auto;
+            width: $size;
+            height: $size;
+            border-radius: 50%;
+            background: globals.$bg-color-button-default;
+            box-shadow: 1px 2px 4px 0 rgba(0, 0, 0, 0.5);
+            transition: background 300ms;
+        }
+    }
+
+    &__label {
+        color: globals.$text-soft-color;
+        font-style: italic;
+        user-select: none;
+        cursor: pointer;
+        transition: color 300ms;
+
+        &--inactive {
+            color: color.adjust(globals.$text-soft-color, $lightness: -15%);
+        }
+
+        &--active {
+            color: color.adjust(globals.$text-soft-color, $lightness: 10%);
+        }
+    }
+
+    &:hover {
+        #{$block}__slide {
+            background-color: color.adjust(globals.$bg-color-emphasis, $lightness: 3%);
+
+            &__button {
+                background-color: color.adjust(globals.$bg-color-button-default, $lightness: 8%);
+            }
+        }
+    }
+
+    &__disabled-reason {
+        color: globals.$text-light-color;
+        font-size: 1.1rem;
+    }
+
+    //
+    // - States
+    //
+
+    &--toggled {
+        #{$block}__slide {
+            flex-direction: row-reverse;
+        }
+    }
+
+    &--highlight {
+        #{$block}__slide__button {
+            background-color: globals.$bg-color-button-success;
+        }
+
+        &:hover {
+            #{$block}__slide__button {
+                background-color: color.adjust(globals.$bg-color-button-success, $lightness: 5%);
+            }
+        }
+    }
+
+    &--disabled {
+        #{$block}__slide {
+            opacity: 0.5;
+            cursor: not-allowed;
+
+            &__button {
+                opacity: 0.5;
+                cursor: not-allowed;
+            }
+        }
+
+        #{$block}__label {
+            opacity: 0.6;
+        }
+
+        &:hover {
+            #{$block}__slide {
+                background: globals.$bg-color-emphasis;
+
+                &__button {
+                    background: globals.$bg-color-button-default;
+                }
+            }
+        }
+
+        &#{$block}--highlight {
+            #{$block}__slide__button {
+                background-color: globals.$bg-color-button-success;
+            }
+        }
+    }
+}

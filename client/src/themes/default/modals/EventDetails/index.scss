@@ -1,0 +1,33 @@
+@use '~@/themes/default/style/globals';
+
+.EventDetails {
+    $block: &;
+
+    position: relative;
+    min-width: 850px;
+
+    &__close {
+        padding: 10px;
+        text-align: right;
+    }
+
+    &__loading {
+        flex: 1;
+    }
+
+    &__content {
+        display: flex;
+        flex-direction: column;
+        padding: 20px;
+    }
+
+    //
+    // - États.
+    //
+
+    &--not-ready {
+        #{$block}__content {
+            padding-bottom: 50px;
+        }
+    }
+}

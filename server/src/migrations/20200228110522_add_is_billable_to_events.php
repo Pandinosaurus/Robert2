@@ -1,20 +1,23 @@
 <?php
+declare(strict_types=1);
+
 use Phinx\Migration\AbstractMigration;
 
-class AddIsBillableToEvents extends AbstractMigration
+final class AddIsBillableToEvents extends AbstractMigration
 {
-    public function up()
+    public function up(): void
     {
         $events = $this->table('events');
         $events
             ->addColumn('is_billable', 'boolean', [
-                'after'   => 'location',
+                'after' => 'location',
                 'default' => true,
+                'null' => false,
             ])
             ->update();
     }
 
-    public function down()
+    public function down(): void
     {
         $events = $this->table('events');
         $events

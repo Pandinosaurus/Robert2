@@ -1,0 +1,171 @@
+@use '~@/themes/default/style/globals';
+
+.MaterialViewInfos {
+    display: flex;
+    flex-direction: row-reverse;
+    justify-content: flex-end;
+    padding-bottom: 6rem;
+    color: globals.$text-base-color;
+    gap: globals.$spacing-large;
+
+    &__main {
+        flex: 1;
+        min-width: 250px;
+    }
+
+    &__secondary {
+        display: flex;
+        flex-direction: column;
+        gap: globals.$spacing-medium;
+    }
+
+    //
+    // - Composantes du matériel.
+    //
+
+    &__reference {
+        margin-top: 0;
+    }
+
+    &__description {
+        white-space: pre-line;
+    }
+
+    &__rental-price,
+    &__stock-quantity {
+        margin-bottom: globals.$spacing-thin;
+        font-weight: 700;
+    }
+
+    &__out-of-order {
+        margin-bottom: globals.$spacing-thin;
+        color: globals.$text-danger-color;
+    }
+
+    &__available-quantity {
+        &--warning {
+            color: globals.$text-warning-color;
+        }
+    }
+
+    &__picture {
+        max-width: 200px;
+        max-height: 260px;
+
+        &__link {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        &__img {
+            display: block;
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+    }
+
+    &__info {
+        $sub-block: &;
+
+        @extend %reset-dl;
+
+        display: flex;
+        align-items: flex-end;
+        margin: 0 0 globals.$spacing-small;
+        gap: globals.$spacing-thin;
+
+        &__value {
+            @extend %reset-dd;
+        }
+
+        &--highlight {
+            #{$sub-block}__value {
+                font-weight: 600;
+            }
+        }
+    }
+
+    &__attribute {
+        display: flex;
+        margin: 0 0 globals.$spacing-small;
+        gap: globals.$spacing-thin;
+
+        &__name {
+            @extend %reset-dl;
+
+            @include globals.icon('cog') {
+                margin-right: globals.$spacing-thin;
+            }
+        }
+
+        &__value {
+            @extend %reset-dd;
+
+            flex: 1;
+            font-weight: 600;
+            white-space: pre-wrap;
+        }
+    }
+
+    &__notes {
+        white-space: pre-wrap;
+    }
+
+    &__extras {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        max-width: 300px;
+        gap: globals.$spacing-medium;
+    }
+
+    &__extra {
+        display: flex;
+        flex-direction: column;
+        gap: globals.$spacing-small;
+
+        &__item {
+            margin: 0;
+        }
+
+        //
+        // - Types
+        //
+
+        &--dates {
+            color: globals.$text-soft-color;
+        }
+    }
+
+    //
+    // - Responsive
+    //
+
+    @media (min-width: globals.$screen-tablet) {
+        flex-direction: row;
+        justify-content: flex-start;
+
+        &__picture {
+            max-width: 260px;
+            max-height: 350px;
+        }
+    }
+
+    @media (min-width: globals.$screen-big-desktop) {
+        &__secondary {
+            flex-direction: row;
+            gap: globals.$spacing-large;
+        }
+
+        &__picture {
+            max-width: 300px;
+            max-height: 390px;
+        }
+
+        &__extras {
+            min-width: 250px;
+        }
+    }
+}

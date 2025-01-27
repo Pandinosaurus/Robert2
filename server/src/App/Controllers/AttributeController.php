@@ -1,52 +1,56 @@
 <?php
 declare(strict_types=1);
 
-namespace Robert2\API\Controllers;
+namespace Loxya\Controllers;
 
-use Robert2\API\Controllers\Traits\WithCrud;
-use Robert2\API\Models\Attribute;
+use Fig\Http\Message\StatusCodeInterface as StatusCode;
+use Illuminate\Database\Eloquent\Builder;
+use Loxya\Controllers\Traits\Crud;
+use Loxya\Http\Request;
+use Loxya\Models\Attribute;
+use Loxya\Models\Enums\AttributeEntity;
+use Psr\Http\Message\ResponseInterface;
 use Slim\Http\Response;
-use Slim\Http\ServerRequest as Request;
 
-class AttributeController extends BaseController
+final class AttributeController extends BaseController
 {
-    use WithCrud;
+    use Crud\GetOne;
+    use Crud\Create;
+    use Crud\Update;
+    use Crud\HardDelete;
 
-    public function getAll(Request $request, Response $response): Response
+    public function getAll(Request $request, Response $response): ResponseInterface
     {
-        $attributes = Attribute::orderBy('name', 'asc');
+        $categoryId = $request->getQueryParam('category');
+        $entity = $request->getEnumQueryParam('entity', AttributeEntity::class);
 
-        $categoryId = $request->getQueryParam('category', null);
-        if (!empty($categoryId)) {
-            $attributes
-                ->whereDoesntHave('categories')
-                ->orWhereHas('categories', function ($query) use ($categoryId) {
-                    $query->where('categories.id', $categoryId);
-                });
-        }
+        $attributes = Attribute::query()
+            ->when($categoryId !== null, static fn (Builder $query) => (
+                $query
+                    ->whereDoesntHave('categories')
+                    ->when($categoryId !== 'none', static fn (Builder $subQuery) => (
+                        $subQuery->orWhereRelation('categories', 'categories.id', $categoryId)
+                    ))
+            ))
+            ->when($entity !== null, static fn (Builder $query) => (
+                $query->forEntity($entity)
+            ))
+            ->with(['categories'])
+            ->orderBy('name', 'asc')
+            ->get();
 
-        $results = $attributes->with('categories')->get()->toArray();
-        return $response->withJson($results);
+        $data = $attributes->map(static fn ($attribute) => static::_formatOne($attribute));
+        return $response->withJson($data, StatusCode::STATUS_OK);
     }
 
-    public function create(Request $request, Response $response): Response
+    // ------------------------------------------------------
+    // -
+    // -    Méthodes internes
+    // -
+    // ------------------------------------------------------
+
+    protected static function _formatOne(Attribute $attribute): array
     {
-        $postData = (array)$request->getParsedBody();
-        if (empty($postData)) {
-            throw new \InvalidArgumentException(
-                "Missing request data to process validation",
-                ERROR_VALIDATION
-            );
-        }
-
-        $attribute = Attribute::new($postData);
-        if (isset($postData['categories'])) {
-            $attribute->Categories()->sync($postData['categories']);
-        }
-
-        $categories = $attribute->Categories()->get()->toArray();
-        $result = $attribute->toArray() + compact('categories');
-
-        return $response->withJson($result, SUCCESS_CREATED);
+        return $attribute->serialize(Attribute::SERIALIZE_DETAILS);
     }
 }

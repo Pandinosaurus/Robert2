@@ -1,0 +1,18 @@
+title-simple: Détails du matériel
+title: "Matériel\_: «\_{name}\_»"
+
+#
+# - Tabs
+#
+
+infos:
+    click-to-open-image: Cliquez pour ouvrir l'image en grand dans un nouvel onglet.
+    park-name: "Parc «\_{name}\_»"
+    tax: Taxe
+    no-tax: Aucune taxe appliquée.
+    degressive-rate: Tarif dégressif
+    no-degressive-rate: Aucun tarif dégressif appliqué.
+
+documents:
+    confirm-permanently-delete: "Voulez-vous vraiment supprimer définitivement ce document\_?"
+    deleted: Document supprimé.

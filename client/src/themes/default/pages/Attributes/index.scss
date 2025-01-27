@@ -1,0 +1,50 @@
+@use '~@/themes/default/style/globals';
+
+.Attributes {
+    height: 100%;
+
+    &__table {
+        height: 100%;
+
+        &__cell {
+            &--name {
+                width: 300px;
+            }
+
+            &--type {
+                width: 150px;
+            }
+
+            &--unit,
+            &--max-length,
+            &--is-totalisable {
+                width: 120px;
+
+                // - Important pour surcharger la définition du <th> de `.VueTables`.
+                // stylelint-disable-next-line declaration-no-important
+                text-align: center !important;
+            }
+
+            &--max-length {
+                display: none;
+
+                @media (min-width: globals.$screen-big-desktop) {
+                    display: table-cell;
+                }
+            }
+        }
+    }
+
+    &__item {
+        &__name {
+            font-weight: 700;
+        }
+
+        &__categories {
+            &--empty {
+                color: globals.$text-light-color;
+                font-style: italic;
+            }
+        }
+    }
+}

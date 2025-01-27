@@ -1,23 +1,24 @@
 <?php
 declare(strict_types=1);
 
-namespace Robert2\API\Services;
+namespace Loxya\Services;
 
-use Monolog\Handler;
+use Loxya\Support\Str;
 use Monolog\Formatter\LineFormatter;
+use Monolog\Handler;
+use Monolog\Level;
 use Psr\Log\LoggerTrait;
 
 final class Logger
 {
     use LoggerTrait;
 
-    /** @var \Monolog\Logger */
-    private $globalLogger;
+    private \Monolog\Logger $globalLogger;
 
     private $settings = [
         'timezone' => null,
         'max_files' => 5,
-        'level' => \Monolog\Logger::DEBUG,
+        'level' => Level::Notice,
     ];
 
     /**
@@ -25,19 +26,21 @@ final class Logger
      *
      * @param array $settings La configuration du logger.
      */
-    public function __construct($settings = [])
+    public function __construct(array $settings = [])
     {
         $this->settings = array_replace($this->settings, $settings);
 
-        if (null !== $this->settings['timezone']) {
+        if ($this->settings['timezone'] !== null) {
             if (is_string($this->settings['timezone'])) {
                 $this->settings['timezone'] = new \DateTimeZone($this->settings['timezone']);
             }
         }
 
-        $levels = array_keys(\Monolog\Logger::getLevels());
-        if (!in_array($this->settings['level'], $levels)) {
-            $this->settings['level'] = \Monolog\Logger::DEBUG;
+        if (
+            is_string($this->settings['level']) &&
+            !in_array(strtoupper($this->settings['level']), Level::NAMES, true)
+        ) {
+            $this->settings['level'] = Level::Notice;
         }
 
         $this->globalLogger = $this->createLogger('app');
@@ -45,7 +48,7 @@ final class Logger
 
     // ------------------------------------------------------
     // -
-    // -    Public methods
+    // -    Méthodes publiques
     // -
     // ------------------------------------------------------
 
@@ -53,8 +56,10 @@ final class Logger
      * Permet de créer un logger.
      *
      * @param string $name Le nom (unique) du logger.
+     *
+     * @return \Monolog\Logger Une instance du logger tout juste créé.
      */
-    public function createLogger(string $name)
+    public function createLogger(string $name): \Monolog\Logger
     {
         $logger = new \Monolog\Logger($name);
 
@@ -64,11 +69,11 @@ final class Logger
         }
 
         // - Handler
-        $path = VAR_FOLDER . DS . 'logs' . DS . \slugify($name) . '.log';
+        $path = LOGS_FOLDER . DS . Str::slugify($name) . '.log';
         $handler = new Handler\RotatingFileHandler(
             $path,
             $this->settings['max_files'],
-            $this->settings['level']
+            $this->settings['level'],
         );
         $handler->setFormatter(new LineFormatter(null, null, true, true));
         $logger->pushHandler($handler);
@@ -79,13 +84,11 @@ final class Logger
     /**
      * Ajoute un message de log.
      *
-     * @param  integer $level   Le niveau de log.
-     * @param  string  $message Le message à logger.
-     * @param  array   $context Le contexte du log (si utile).
-     *
-     * @return void
+     * @param int $level Le niveau de log.
+     * @param string $message Le message à logger.
+     * @param array $context Le contexte du log (si utile).
      */
-    public function log($level, $message, array $context = [])
+    public function log($level, $message, array $context = []): void
     {
         $this->globalLogger->log($level, $message, $context);
     }

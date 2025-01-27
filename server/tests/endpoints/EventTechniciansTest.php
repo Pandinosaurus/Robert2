@@ -1,103 +1,143 @@
 <?php
-namespace Robert2\Tests;
+declare(strict_types=1);
+
+namespace Loxya\Tests;
+
+use Fig\Http\Message\StatusCodeInterface as StatusCode;
+use Illuminate\Support\Collection;
+use Loxya\Models\EventTechnician;
+use Loxya\Support\Arr;
 
 final class EventTechniciansTest extends ApiTestCase
 {
-    public function testGetOneEventTechnician()
+    public static function data(?int $id = null, string $format = EventTechnician::SERIALIZE_FOR_EVENT)
     {
-        $this->client->get('/api/event-technicians/1');
-        $this->assertStatusCode(SUCCESS_OK);
-        $this->assertResponseData([
-            'id' => 1,
-            'event_id' => 1,
-            'technician_id' => 1,
-            'start_time' => '2018-12-17 09:00:00',
-            'end_time' => '2018-12-18 22:00:00',
-            'position' => 'Régisseur',
-            'technician' => [
+        $eventTechnicians = new Collection([
+            [
                 'id' => 1,
-                'first_name' => 'Jean',
-                'last_name' => 'Fountain',
-                'nickname' => null,
-                'phone' => null,
-                'full_name' => 'Jean Fountain',
-                'country' => null,
-                'company' => null,
+                'event_id' => 1,
+                'technician_id' => 1,
+                'period' => [
+                    'start' => '2018-12-17 09:00:00',
+                    'end' => '2018-12-18 22:00:00',
+                    'isFullDays' => false,
+                ],
+                'position' => 'Régisseur',
+                'technician' => TechniciansTest::data(1),
+                'event' => EventsTest::data(1),
+            ],
+            [
+                'id' => 2,
+                'event_id' => 1,
+                'technician_id' => 2,
+                'period' => [
+                    'start' => '2018-12-18 14:00:00',
+                    'end' => '2018-12-18 18:00:00',
+                    'isFullDays' => false,
+                ],
+                'position' => 'Technicien plateau',
+                'technician' => TechniciansTest::data(2),
+                'event' => EventsTest::data(1),
+            ],
+            [
+                'id' => 3,
+                'event_id' => 7,
+                'technician_id' => 2,
+                'period' => [
+                    'start' => '2023-05-25 00:00:00',
+                    'end' => '2023-05-29 00:00:00',
+                    'isFullDays' => false,
+                ],
+                'position' => 'Ingénieur du son',
+                'technician' => TechniciansTest::data(2),
+                'event' => EventsTest::data(7),
             ],
         ]);
+
+        $eventTechnicians = match ($format) {
+            EventTechnician::SERIALIZE_FOR_EVENT => (
+                $eventTechnicians->map(static fn ($event) => (
+                    Arr::except($event, ['event'])
+                ))
+            ),
+            EventTechnician::SERIALIZE_FOR_TECHNICIAN => (
+                $eventTechnicians->map(static fn ($event) => (
+                    Arr::except($event, ['technician'])
+                ))
+            ),
+            default => throw new \InvalidArgumentException(sprintf("Unknown format \"%s\"", $format)),
+        };
+
+        return static::dataFactory($id, $eventTechnicians->all());
     }
 
-    public function testCreateEventTechnician()
+    public function testGetOneEventTechnician(): void
+    {
+        $this->client->get('/api/event-technicians/1');
+        $this->assertStatusCode(StatusCode::STATUS_OK);
+        $this->assertResponseData(self::data(1));
+    }
+
+    public function testCreateEventTechnician(): void
     {
         $data = [
             'event_id' => 1,
             'technician_id' => 2,
-            'start_time' => '2018-12-17 10:00:00',
-            'end_time' => '2018-12-17 20:30:00',
+            'period' => [
+                'start' => '2018-12-17 10:00:00',
+                'end' => '2018-12-17 20:30:00',
+                'isFullDays' => false,
+            ],
             'position' => 'Testeur',
         ];
         $this->client->post('/api/event-technicians', $data);
-        $this->assertStatusCode(SUCCESS_CREATED);
+        $this->assertStatusCode(StatusCode::STATUS_CREATED);
         $this->assertResponseData([
-            'id' => 3,
+            'id' => 4,
             'event_id' => 1,
             'technician_id' => 2,
-            'start_time' => '2018-12-17 10:00:00',
-            'end_time' => '2018-12-17 20:30:00',
-            'position' => 'Testeur',
-            'technician' => [
-                'id' => 2,
-                'first_name' => 'Roger',
-                'last_name' => 'Rabbit',
-                'nickname' => 'Riri',
-                'phone' => null,
-                'full_name' => 'Roger Rabbit',
-                'country' => null,
-                'company' => null,
+            'period' => [
+                'start' => '2018-12-17 10:00:00',
+                'end' => '2018-12-17 20:30:00',
+                'isFullDays' => false,
             ],
+            'position' => 'Testeur',
+            'technician' => TechniciansTest::data(2),
         ]);
     }
 
-    public function testUpdateEventTechnicianNoData()
+    public function testUpdateEventTechnicianNoData(): void
     {
         $this->client->put('/api/event-technicians/1', []);
-        $this->assertStatusCode(ERROR_VALIDATION);
-        $this->assertErrorMessage("Missing request data to process validation");
+        $this->assertStatusCode(StatusCode::STATUS_BAD_REQUEST);
+        $this->assertApiErrorMessage("No data was provided.");
     }
 
-    public function testUpdateEventTechnician()
+    public function testUpdateEventTechnician(): void
     {
         $data = [
-            'start_time' => '2018-12-17 10:00:00',
-            'end_time' => '2018-12-18 20:00:00',
             'position' => 'Régisseur général',
+            'period' => [
+                'start' => '2018-12-17 10:00:00',
+                'end' => '2018-12-18 20:00:00',
+                'isFullDays' => false,
+            ],
         ];
         $this->client->put('/api/event-technicians/1', $data);
-        $this->assertStatusCode(SUCCESS_OK);
-        $this->assertResponseData([
-            'id' => 1,
-            'event_id' => 1,
-            'technician_id' => 1,
-            'start_time' => '2018-12-17 10:00:00',
-            'end_time' => '2018-12-18 20:00:00',
+        $this->assertStatusCode(StatusCode::STATUS_OK);
+        $this->assertResponseData(array_replace(self::data(1), [
             'position' => 'Régisseur général',
-            'technician' => [
-                'id' => 1,
-                'first_name' => 'Jean',
-                'last_name' => 'Fountain',
-                'nickname' => null,
-                'phone' => null,
-                'full_name' => 'Jean Fountain',
-                'country' => null,
-                'company' => null,
+            'period' => [
+                'start' => '2018-12-17 10:00:00',
+                'end' => '2018-12-18 20:00:00',
+                'isFullDays' => false,
             ],
-        ]);
+        ]));
     }
 
-    public function testDestroyEventTechnician()
+    public function testDestroyEventTechnician(): void
     {
         $this->client->delete('/api/event-technicians/2');
-        $this->assertStatusCode(SUCCESS_OK);
-        $this->assertResponseData(['destroyed' => true]);
+        $this->assertStatusCode(StatusCode::STATUS_NO_CONTENT);
     }
 }

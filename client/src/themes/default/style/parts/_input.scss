@@ -1,0 +1,52 @@
+/* stylelint-disable selector-max-type */
+
+input,
+textarea {
+    flex: 0 0 auto;
+    padding: $input-padding-vertical $input-padding-horizontal;
+    outline: 0;
+    border: $input-border-width solid $input-border-color;
+    border-radius: $input-border-radius;
+    background-color: $input-background-color;
+    color: $input-text-color;
+    font-family: $base-font-family;
+    font-size: $input-font-size;
+    line-height: $input-line-height;
+
+    &::placeholder {
+        color: $input-placeholder-color;
+    }
+
+    &:-webkit-autofill,
+    &:-webkit-autofill:hover,
+    &:-webkit-autofill:focus {
+        -webkit-text-fill-color: $input-autofill-text-color;
+        box-shadow: 0 0 0 1000px $input-autofill-background-color inset;
+        transition: background-color 50000ms ease-in-out 0;
+    }
+
+    &:focus {
+        border-color: $input-focus-border-color;
+        background-color: $input-focus-background-color;
+        color: $input-focus-text-color;
+    }
+
+    &:disabled {
+        border-color: $input-disabled-border-color;
+        background-color: $input-disabled-background-color;
+        color: $input-disabled-text-color;
+
+        &::placeholder {
+            color: $input-disabled-placeholder-color;
+        }
+    }
+}
+
+textarea {
+    min-height: 75px;
+    resize: vertical;
+}
+
+input[type='text'] {
+    min-height: $input-min-height;
+}
